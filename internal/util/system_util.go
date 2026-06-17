@@ -39,7 +39,7 @@ func ShouldSkip(path string) bool {
 	skipPaths := essentialSystemSkips[CurrentOS()]
 
 	for _, skipPath := range skipPaths {
-		if strings.HasPrefix(clean, skipPath+string(os.PathSeparator)) {
+		if clean == skipPath || strings.HasPrefix(clean, skipPath+string(os.PathSeparator)) {
 			return true
 		}
 	}

@@ -18,7 +18,6 @@ type Scanner struct {
 	NumDirectories int
 	SkippedPaths   [][2]string
 	MaxDepth       int
-	JSONReport     bool
 }
 
 type Node struct {
@@ -38,7 +37,7 @@ func NewScanner(path string, maxDepth int) (*Scanner, error) {
 		RootPath: absPath,
 		MaxDepth: maxDepth,
 	}
-	rootNode, err := scanner.walkPath(scanner.RootPath, 1)
+	rootNode, err := scanner.walkPath(scanner.RootPath, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +126,7 @@ func (s *Scanner) GetLargestEntries(nEntries int, entryType string) []*Node {
 	return largestEntries
 }
 
-func (s *Scanner) ScannerReport() string {
+func (s *Scanner) ScannerReport(jsonReport bool) string {
 	formatCount := func(n int) string {
 		raw := fmt.Sprintf("%d", n)
 		if len(raw) <= 3 {
@@ -178,10 +177,10 @@ func (s *Scanner) ScannerReport() string {
 		totalSize = s.RootNode.TotSize
 	}
 
-	if s.JSONReport {
+	if jsonReport {
 		type reportEntry struct {
-			Size string `json:"size"`
-			Path string `json:"path"`
+			SizeBytes int64  `json:"size_bytes"`
+			Path      string `json:"path"`
 		}
 
 		type reportWarning struct {
@@ -191,19 +190,19 @@ func (s *Scanner) ScannerReport() string {
 
 		report := struct {
 			PathScanned        string          `json:"path_scanned"`
-			TotalSize          string          `json:"total_size"`
-			FilesScanned       string          `json:"files_scanned"`
-			DirectoriesScanned string          `json:"directories_scanned"`
-			SkippedPaths       string          `json:"skipped_paths"`
+			TotalSizeBytes     int64           `json:"total_size_bytes"`
+			FilesScanned       int             `json:"files_scanned"`
+			DirectoriesScanned int             `json:"directories_scanned"`
+			SkippedPaths       int             `json:"skipped_paths"`
 			LargestDirectories []reportEntry   `json:"largest_directories"`
 			LargestFiles       []reportEntry   `json:"largest_files"`
 			Warnings           []reportWarning `json:"warnings"`
 		}{
 			PathScanned:        s.RootPath,
-			TotalSize:          formatSize(totalSize),
-			FilesScanned:       formatCount(s.NumFiles),
-			DirectoriesScanned: formatCount(s.NumDirectories),
-			SkippedPaths:       formatCount(len(s.SkippedPaths)),
+			TotalSizeBytes:     totalSize,
+			FilesScanned:       s.NumFiles,
+			DirectoriesScanned: s.NumDirectories,
+			SkippedPaths:       len(s.SkippedPaths),
 			LargestDirectories: make([]reportEntry, 0),
 			LargestFiles:       make([]reportEntry, 0),
 			Warnings:           make([]reportWarning, 0),
@@ -214,8 +213,8 @@ func (s *Scanner) ScannerReport() string {
 				continue
 			}
 			report.LargestDirectories = append(report.LargestDirectories, reportEntry{
-				Size: formatSize(dir.TotSize),
-				Path: dir.Path,
+				SizeBytes: dir.TotSize,
+				Path:      dir.Path,
 			})
 		}
 
@@ -224,8 +223,8 @@ func (s *Scanner) ScannerReport() string {
 				continue
 			}
 			report.LargestFiles = append(report.LargestFiles, reportEntry{
-				Size: formatSize(file.TotSize),
-				Path: file.Path,
+				SizeBytes: file.TotSize,
+				Path:      file.Path,
 			})
 		}
 

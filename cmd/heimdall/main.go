@@ -8,11 +8,26 @@ import (
 	"github.com/SkAndMl/heimdall/internal/scan"
 )
 
+func usage() string {
+	return `Usage:
+  heimdall scan <path> [--json] [--max-depth <depth>]
+
+Examples:
+  heimdall scan ~
+  heimdall scan ~ --json
+  heimdall scan ~ --max-depth 2
+  heimdall scan ~ --json --max-depth 2`
+}
+
+func exitWithUsage(message string) {
+	fmt.Fprintf(os.Stderr, "Error: %s\n\n%s\n", message, usage())
+	os.Exit(1)
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 3 || args[1] != "scan" {
-		fmt.Println("Invalid command!")
-		os.Exit(1)
+		exitWithUsage("expected command: scan <path>")
 	}
 
 	jsonReport := false
@@ -24,28 +39,24 @@ func main() {
 			jsonReport = true
 		case "--max-depth":
 			if i+1 >= len(args) {
-				fmt.Println("Missing value for --max-depth")
-				os.Exit(1)
+				exitWithUsage("--max-depth requires a positive integer value")
 			}
 			depth, err := strconv.Atoi(args[i+1])
-			if err != nil {
-				fmt.Println("Invalid value for --max-depth")
-				os.Exit(1)
+			if err != nil || depth <= 0 {
+				exitWithUsage(fmt.Sprintf("invalid --max-depth value %q; expected a positive integer", args[i+1]))
 			}
 			maxDepth = depth
 			i++
 		default:
-			fmt.Println("Invalid command!")
-			os.Exit(1)
+			exitWithUsage(fmt.Sprintf("unknown option %q", args[i]))
 		}
 	}
 
 	scanner, err := scan.NewScanner(args[2], maxDepth)
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		fmt.Fprintf(os.Stderr, "Error: scan failed: %s\n", err)
+		os.Exit(2)
 	}
-	scanner.JSONReport = jsonReport
 
-	fmt.Println(scanner.ScannerReport())
+	fmt.Println(scanner.ScannerReport(jsonReport))
 }
