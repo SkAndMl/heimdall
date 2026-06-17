@@ -3,35 +3,49 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"strconv"
 
 	"github.com/SkAndMl/heimdall/internal/scan"
 )
 
 func main() {
 	args := os.Args
-	if len(args) != 3 || args[1] != "scan" {
+	if len(args) < 3 || args[1] != "scan" {
 		fmt.Println("Invalid command!")
 		os.Exit(1)
 	}
-	absPath, err := filepath.Abs(args[2])
-	if err != nil {
-		fmt.Println("Cannot get path")
-		os.Exit(1)
+
+	jsonReport := false
+	maxDepth := -1
+
+	for i := 3; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			jsonReport = true
+		case "--max-depth":
+			if i+1 >= len(args) {
+				fmt.Println("Missing value for --max-depth")
+				os.Exit(1)
+			}
+			depth, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				fmt.Println("Invalid value for --max-depth")
+				os.Exit(1)
+			}
+			maxDepth = depth
+			i++
+		default:
+			fmt.Println("Invalid command!")
+			os.Exit(1)
+		}
 	}
 
-	rootNode, err := scan.CreateRootNode(absPath)
+	scanner, err := scan.NewScanner(args[2], maxDepth)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
-	fmt.Println(rootNode.Path)
-	fmt.Println(rootNode.Depth)
-	fmt.Println(float64(rootNode.TotSize) / (1024 * 1024 * 1024))
+	scanner.JSONReport = jsonReport
 
-	largestFiles := rootNode.GetLargestFiles(50)
-	fmt.Println("Top 50 largest files")
-	for _, file := range largestFiles {
-		fmt.Printf("File: %s, Size: %f\n", file.Path, float64(file.TotSize)/float64(1024*1024))
-	}
+	fmt.Println(scanner.ScannerReport())
 }
