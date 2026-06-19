@@ -10,13 +10,14 @@ import (
 
 func usage() string {
 	return `Usage:
-  heimdall scan <path> [--json] [--max-depth <depth>]
+  heimdall scan <path> [--json] [--max-depth <depth>] [--limit <count>]
 
 Examples:
   heimdall scan ~
   heimdall scan ~ --json
   heimdall scan ~ --max-depth 2
-  heimdall scan ~ --json --max-depth 2`
+  heimdall scan ~ --limit 25
+  heimdall scan ~ --json --max-depth 2 --limit 25`
 }
 
 func exitWithUsage(message string) {
@@ -32,6 +33,7 @@ func main() {
 
 	jsonReport := false
 	maxDepth := -1
+	limit := -1
 
 	for i := 3; i < len(args); i++ {
 		switch args[i] {
@@ -47,6 +49,16 @@ func main() {
 			}
 			maxDepth = depth
 			i++
+		case "--limit":
+			if i+1 >= len(args) {
+				exitWithUsage("--limit requires a positive integer value")
+			}
+			parsedLimit, err := strconv.Atoi(args[i+1])
+			if err != nil || parsedLimit <= 0 {
+				exitWithUsage(fmt.Sprintf("invalid --limit value %q; expected a positive integer", args[i+1]))
+			}
+			limit = parsedLimit
+			i++
 		default:
 			exitWithUsage(fmt.Sprintf("unknown option %q", args[i]))
 		}
@@ -58,5 +70,5 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Println(scanner.ScannerReport(jsonReport))
+	fmt.Println(scanner.ScannerReport(limit, jsonReport))
 }

@@ -11,12 +11,18 @@ import (
 	"github.com/SkAndMl/heimdall/internal/util"
 )
 
+type ScanWarning struct {
+	Path    string
+	Type    string
+	Message string
+}
+
 type Scanner struct {
 	RootPath       string
 	RootNode       *Node
 	NumFiles       int
 	NumDirectories int
-	SkippedPaths   [][2]string
+	Warnings       []ScanWarning
 	MaxDepth       int
 }
 
@@ -62,6 +68,15 @@ func (s *Scanner) walkPath(path string, curDepth int) (*Node, error) {
 
 	node := &Node{Path: path}
 
+	if info.Mode()&os.ModeSymlink != 0 {
+		s.Warnings = append(s.Warnings, ScanWarning{
+			Path:    path,
+			Type:    "symlink",
+			Message: "skipped symlink to avoid double-counting",
+		})
+		return node, nil
+	}
+
 	if !info.IsDir() {
 		node.Type = "file"
 		node.TotSize = info.Size()
@@ -77,16 +92,26 @@ func (s *Scanner) walkPath(path string, curDepth int) (*Node, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		if os.IsPermission(err) {
-			s.SkippedPaths = append(s.SkippedPaths, [2]string{path, err.Error()})
+			s.Warnings = append(s.Warnings, ScanWarning{
+				Path:    path,
+				Type:    "permission_denied",
+				Message: err.Error(),
+			})
 			return node, nil
 		}
 		return nil, err
 	}
 
 	for _, entry := range entries {
-		childNode, err := s.walkPath(filepath.Join(path, entry.Name()), curDepth+1)
+		childPath := filepath.Join(path, entry.Name())
+		childNode, err := s.walkPath(childPath, curDepth+1)
 		if err != nil {
-			return nil, err
+			s.Warnings = append(s.Warnings, ScanWarning{
+				Path:    childPath,
+				Type:    "error",
+				Message: err.Error(),
+			})
+			continue
 		}
 		if childNode != nil {
 			node.TotSize += childNode.TotSize
@@ -126,7 +151,7 @@ func (s *Scanner) GetLargestEntries(nEntries int, entryType string) []*Node {
 	return largestEntries
 }
 
-func (s *Scanner) ScannerReport(jsonReport bool) string {
+func (s *Scanner) ScannerReport(limit int, jsonReport bool) string {
 	formatCount := func(n int) string {
 		raw := fmt.Sprintf("%d", n)
 		if len(raw) <= 3 {
@@ -177,6 +202,13 @@ func (s *Scanner) ScannerReport(jsonReport bool) string {
 		totalSize = s.RootNode.TotSize
 	}
 
+	dirLimit := 6
+	fileLimit := 5
+	if limit > 0 {
+		dirLimit = limit
+		fileLimit = limit
+	}
+
 	if jsonReport {
 		type reportEntry struct {
 			SizeBytes int64  `json:"size_bytes"`
@@ -184,8 +216,9 @@ func (s *Scanner) ScannerReport(jsonReport bool) string {
 		}
 
 		type reportWarning struct {
-			Warning string `json:"warning"`
+			Type    string `json:"type"`
 			Path    string `json:"path"`
+			Message string `json:"message"`
 		}
 
 		report := struct {
@@ -202,13 +235,14 @@ func (s *Scanner) ScannerReport(jsonReport bool) string {
 			TotalSizeBytes:     totalSize,
 			FilesScanned:       s.NumFiles,
 			DirectoriesScanned: s.NumDirectories,
-			SkippedPaths:       len(s.SkippedPaths),
+			SkippedPaths:       len(s.Warnings),
 			LargestDirectories: make([]reportEntry, 0),
 			LargestFiles:       make([]reportEntry, 0),
 			Warnings:           make([]reportWarning, 0),
 		}
 
-		for _, dir := range s.GetLargestEntries(6, "dir") {
+		dirsAdded := 0
+		for _, dir := range s.GetLargestEntries(dirLimit+1, "dir") {
 			if dir == nil || dir.Path == s.RootPath {
 				continue
 			}
@@ -216,9 +250,13 @@ func (s *Scanner) ScannerReport(jsonReport bool) string {
 				SizeBytes: dir.TotSize,
 				Path:      dir.Path,
 			})
+			dirsAdded++
+			if dirsAdded >= dirLimit {
+				break
+			}
 		}
 
-		for _, file := range s.GetLargestEntries(5, "file") {
+		for _, file := range s.GetLargestEntries(fileLimit, "file") {
 			if file == nil {
 				continue
 			}
@@ -228,14 +266,11 @@ func (s *Scanner) ScannerReport(jsonReport bool) string {
 			})
 		}
 
-		for _, skippedPath := range s.SkippedPaths {
-			warning := skippedPath[1]
-			if strings.Contains(warning, "permission denied") || strings.Contains(warning, "operation not permitted") {
-				warning = "permission denied"
-			}
+		for _, warning := range s.Warnings {
 			report.Warnings = append(report.Warnings, reportWarning{
-				Warning: warning,
-				Path:    skippedPath[0],
+				Type:    warning.Type,
+				Path:    warning.Path,
+				Message: warning.Message,
 			})
 		}
 
@@ -249,35 +284,36 @@ func (s *Scanner) ScannerReport(jsonReport bool) string {
 	b.WriteString(fmt.Sprintf("%-21s%s\n", "Total size:", formatSize(totalSize)))
 	b.WriteString(fmt.Sprintf("%-21s%s\n", "Files scanned:", formatCount(s.NumFiles)))
 	b.WriteString(fmt.Sprintf("%-21s%s\n", "Directories scanned:", formatCount(s.NumDirectories)))
-	b.WriteString(fmt.Sprintf("%-21s%s\n\n", "Skipped paths:", formatCount(len(s.SkippedPaths))))
+	b.WriteString(fmt.Sprintf("%-21s%s\n\n", "Skipped paths:", formatCount(len(s.Warnings))))
 
 	b.WriteString("Largest directories:\n")
-	for _, dir := range s.GetLargestEntries(6, "dir") {
+	dirsAdded := 0
+	for _, dir := range s.GetLargestEntries(dirLimit+1, "dir") {
 		if dir == nil || dir.Path == s.RootPath {
 			continue
 		}
 		b.WriteString(fmt.Sprintf("  %-8s %s\n", formatSize(dir.TotSize), dir.Path))
+		dirsAdded++
+		if dirsAdded >= dirLimit {
+			break
+		}
 	}
 
 	b.WriteString("\nLargest files:\n")
-	for _, file := range s.GetLargestEntries(5, "file") {
+	for _, file := range s.GetLargestEntries(fileLimit, "file") {
 		if file == nil {
 			continue
 		}
 		b.WriteString(fmt.Sprintf("  %-8s %s\n", formatSize(file.TotSize), file.Path))
 	}
 
-	if len(s.SkippedPaths) == 0 {
+	if len(s.Warnings) == 0 {
 		return b.String()
 	}
 
 	b.WriteString("\nWarnings:\n")
-	for _, skippedPath := range s.SkippedPaths {
-		warning := skippedPath[1]
-		if strings.Contains(warning, "permission denied") || strings.Contains(warning, "operation not permitted") {
-			warning = "permission denied"
-		}
-		b.WriteString(fmt.Sprintf("  %-18s %s\n", warning+":", skippedPath[0]))
+	for _, warning := range s.Warnings {
+		b.WriteString(fmt.Sprintf("  %-18s %s (%s)\n", warning.Type+":", warning.Path, warning.Message))
 	}
 
 	return b.String()
