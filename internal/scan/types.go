@@ -81,3 +81,11 @@ type Node struct {
 	Children []*Node
 	Depth    int
 }
+
+type Options struct {
+	Path          string
+	JSONReport    bool
+	ExplainReport bool
+	MaxDepth      int
+	Limit         int
+}
