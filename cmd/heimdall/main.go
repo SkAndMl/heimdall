@@ -10,14 +10,15 @@ import (
 
 func usage() string {
 	return `Usage:
-  heimdall scan <path> [--json] [--max-depth <depth>] [--limit <count>]
+  heimdall scan <path> [--json] [--explain] [--max-depth <depth>] [--limit <count>]
 
 Examples:
   heimdall scan ~
   heimdall scan ~ --json
+  heimdall scan ~ --explain
   heimdall scan ~ --max-depth 2
   heimdall scan ~ --limit 25
-  heimdall scan ~ --json --max-depth 2 --limit 25`
+  heimdall scan ~ --json --explain --max-depth 2 --limit 25`
 }
 
 func exitWithUsage(message string) {
@@ -32,6 +33,7 @@ func main() {
 	}
 
 	jsonReport := false
+	explainReport := false
 	maxDepth := -1
 	limit := -1
 
@@ -39,6 +41,8 @@ func main() {
 		switch args[i] {
 		case "--json":
 			jsonReport = true
+		case "--explain":
+			explainReport = true
 		case "--max-depth":
 			if i+1 >= len(args) {
 				exitWithUsage("--max-depth requires a positive integer value")
@@ -70,5 +74,5 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Println(scanner.ScannerReport(limit, jsonReport))
+	fmt.Println(scanner.ScannerReport(limit, jsonReport, explainReport))
 }
