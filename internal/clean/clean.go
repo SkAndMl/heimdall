@@ -2,10 +2,10 @@ package clean
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/SkAndMl/heimdall/internal/categories"
 	"github.com/SkAndMl/heimdall/internal/scan"
 )
 
@@ -41,7 +41,7 @@ func Clean(args Options) (string, error) {
 	return "", nil
 }
 
-func DryRunReport(categories map[string][]scan.Finding) string {
+func DryRunReport(findingsByCategory map[categories.ID][]scan.Finding) string {
 	formatSize := func(size int64) string {
 		const unit = 1024
 		if size < unit {
@@ -100,101 +100,51 @@ func DryRunReport(categories map[string][]scan.Finding) string {
 
 	summaries := make([]cleanupSummary, 0)
 
-	if findings := categories["python_cache"]; len(findings) > 0 {
-		var size int64
-		for _, finding := range findings {
-			size += finding.Size
-		}
-		summaries = append(summaries, cleanupSummary{
-			section: "Safe candidates",
-			label:   "Python bytecode cache",
-			detail:  pluralize(len(findings), "__pycache__ directory", "__pycache__ directories"),
-			action:  "move to Trash",
-			size:    size,
-			order:   0,
-		})
-	}
-
-	archiveFindings := append([]scan.Finding{}, categories["installer"]...)
-	archiveFindings = append(archiveFindings, categories["archive"]...)
-	if len(archiveFindings) > 0 {
-		var size int64
-		extensionCounts := make(map[string]int)
-		for _, finding := range archiveFindings {
-			size += finding.Size
-			extension := strings.TrimPrefix(strings.ToUpper(filepath.Ext(finding.Path)), ".")
-			if extension == "GZ" && strings.HasSuffix(strings.ToLower(finding.Path), ".tar.gz") {
-				extension = "TAR.GZ"
+	detailForGroup := func(group categories.CleanupGroup, findings []scan.Finding) string {
+		switch group.DetailKind {
+		case categories.DetailExtensions:
+			extensionCounts := make(map[string]int)
+			for _, finding := range findings {
+				extensionCounts[categories.ArchiveExtension(finding.Path)]++
 			}
-			if extension == "" {
-				extension = "file"
+
+			extensions := make([]string, 0, len(extensionCounts))
+			for extension := range extensionCounts {
+				extensions = append(extensions, extension)
 			}
-			extensionCounts[extension]++
-		}
+			sort.Strings(extensions)
 
-		extensions := make([]string, 0, len(extensionCounts))
-		for extension := range extensionCounts {
-			extensions = append(extensions, extension)
+			detailParts := make([]string, 0, len(extensions))
+			for _, extension := range extensions {
+				detailParts = append(detailParts, pluralize(extensionCounts[extension], extension+" file", extension+" files"))
+			}
+			return strings.Join(detailParts, ", ")
+		default:
+			return pluralize(len(findings), group.SingularDetail, group.PluralDetail)
 		}
-		sort.Strings(extensions)
-
-		detailParts := make([]string, 0, len(extensions))
-		for _, extension := range extensions {
-			detailParts = append(detailParts, pluralize(extensionCounts[extension], extension+" file", extension+" files"))
-		}
-
-		summaries = append(summaries, cleanupSummary{
-			section: "Usually safe",
-			label:   "Installers and archives",
-			detail:  strings.Join(detailParts, ", "),
-			action:  "move to Trash",
-			size:    size,
-			order:   1,
-		})
 	}
 
-	if findings := categories["python_virtual_environment"]; len(findings) > 0 {
+	for _, group := range categories.CleanupGroups() {
+		findings := make([]scan.Finding, 0)
+		for _, category := range group.Categories {
+			findings = append(findings, findingsByCategory[category]...)
+		}
+		if len(findings) == 0 {
+			continue
+		}
+
 		var size int64
 		for _, finding := range findings {
 			size += finding.Size
 		}
-		summaries = append(summaries, cleanupSummary{
-			section: "Review recommended",
-			label:   "Python virtual environments",
-			detail:  pluralize(len(findings), "environment detected", "environments detected"),
-			action:  "select manually",
-			size:    size,
-			order:   2,
-		})
-	}
 
-	if findings := categories["node_modules"]; len(findings) > 0 {
-		var size int64
-		for _, finding := range findings {
-			size += finding.Size
-		}
 		summaries = append(summaries, cleanupSummary{
-			section: "Review recommended",
-			label:   "Node dependencies",
-			detail:  pluralize(len(findings), "node_modules directory", "node_modules directories"),
-			action:  "select manually",
+			section: group.Section,
+			label:   group.Label,
+			detail:  detailForGroup(group, findings),
+			action:  group.Action,
 			size:    size,
-			order:   3,
-		})
-	}
-
-	if findings := categories["huggingface_cache"]; len(findings) > 0 {
-		var size int64
-		for _, finding := range findings {
-			size += finding.Size
-		}
-		summaries = append(summaries, cleanupSummary{
-			section: "Review recommended",
-			label:   "Hugging Face cache",
-			detail:  pluralize(len(findings), "cache path detected", "cache paths detected"),
-			action:  "select manually",
-			size:    size,
-			order:   4,
+			order:   group.Order,
 		})
 	}
 
@@ -216,7 +166,7 @@ func DryRunReport(categories map[string][]scan.Finding) string {
 		detailWidth = 68
 	)
 
-	for _, section := range []string{"Safe candidates", "Usually safe", "Review recommended"} {
+	for _, section := range categories.CleanupSections() {
 		wroteSection := false
 		for _, summary := range summaries {
 			if summary.section != section {

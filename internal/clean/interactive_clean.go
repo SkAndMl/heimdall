@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/SkAndMl/heimdall/internal/categories"
 	"github.com/SkAndMl/heimdall/internal/scan"
 	"github.com/SkAndMl/heimdall/internal/trash"
 	tea "github.com/charmbracelet/bubbletea"
@@ -126,45 +127,6 @@ func (m model) View() string {
 		return b.String()
 	}
 
-	categoryForPath := func(path string) string {
-		clean := filepath.Clean(path)
-		base := filepath.Base(clean)
-		lowerPath := strings.ToLower(clean)
-		lowerBase := strings.ToLower(base)
-
-		switch {
-		case lowerBase == "__pycache__":
-			return "python_cache"
-		case lowerBase == "node_modules":
-			return "node_modules"
-		case lowerBase == ".venv" || lowerBase == "venv" || strings.HasSuffix(lowerPath, string(filepath.Separator)+"pyvenv.cfg"):
-			return "python_virtual_environment"
-		case strings.HasSuffix(lowerBase, ".dmg"),
-			strings.HasSuffix(lowerBase, ".pkg"),
-			strings.HasSuffix(lowerBase, ".mpkg"),
-			strings.HasSuffix(lowerBase, ".msi"),
-			strings.HasSuffix(lowerBase, ".exe"),
-			strings.HasSuffix(lowerBase, ".deb"),
-			strings.HasSuffix(lowerBase, ".rpm"),
-			strings.HasSuffix(lowerBase, ".appimage"):
-			return "installer"
-		case strings.HasSuffix(lowerBase, ".tar.gz"),
-			strings.HasSuffix(lowerBase, ".tar.bz2"),
-			strings.HasSuffix(lowerBase, ".tgz"),
-			strings.HasSuffix(lowerBase, ".tar.xz"),
-			strings.HasSuffix(lowerBase, ".zip"),
-			strings.HasSuffix(lowerBase, ".7z"),
-			strings.HasSuffix(lowerBase, ".rar"),
-			strings.HasSuffix(lowerBase, ".tar"),
-			strings.HasSuffix(lowerBase, ".gz"),
-			strings.HasSuffix(lowerBase, ".bz2"),
-			strings.HasSuffix(lowerBase, ".xz"):
-			return "archive"
-		default:
-			return ""
-		}
-	}
-
 	labelForPath := func(path string) string {
 		clean := filepath.Clean(path)
 		base := filepath.Base(clean)
@@ -179,12 +141,11 @@ func (m model) View() string {
 		return base
 	}
 
-	riskForPath := func(path string) string {
-		category := categoryForPath(path)
-		if explanation, ok := scan.CategoryExplanations[category]; ok {
-			return explanation.Risk
+	riskForFinding := func(finding scan.Finding) string {
+		if info, ok := categories.Lookup(finding.Category); ok {
+			return info.Risk
 		}
-		return "Review recommended"
+		return categories.RiskReviewRecommended
 	}
 
 	const (
@@ -193,14 +154,14 @@ func (m model) View() string {
 	)
 
 	var selectedSize int64
-	action := "move to Trash"
+	action := categories.ActionMoveToTrash
 	for i, finding := range m.findings {
 		if !m.selected[i] {
 			continue
 		}
 		selectedSize += finding.Size
-		if riskForPath(finding.Path) == "Review recommended" {
-			action = "select manually"
+		if riskForFinding(finding) == categories.RiskReviewRecommended {
+			action = categories.ActionSelectManually
 		}
 	}
 
@@ -245,7 +206,7 @@ func (m model) View() string {
 			label,
 			sizeWidth,
 			formatSize(finding.Size),
-			riskForPath(finding.Path),
+			riskForFinding(finding),
 		))
 	}
 

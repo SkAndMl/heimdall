@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/SkAndMl/heimdall/internal/categories"
 	"github.com/SkAndMl/heimdall/internal/util"
 )
 
@@ -55,57 +56,28 @@ func isHuggingFaceCache(path string) bool {
 
 }
 
-func ClassifyDir(path string) string {
+func ClassifyDir(path string) categories.ID {
 
 	info, err := os.Stat(path)
 	if err != nil || !info.IsDir() {
-		return "unknown"
+		return categories.Unknown
 	}
 
 	if isPythonVenv(path) {
-		return "python_virtual_environment"
+		return categories.PythonVirtualEnvironment
 	}
 
 	if filepath.Base(path) == "__pycache__" {
-		return "python_cache"
+		return categories.PythonCache
 	}
 
 	if filepath.Base(path) == "node_modules" {
-		return "node_modules"
+		return categories.NodeModules
 	}
 
 	if isHuggingFaceCache(path) {
-		return "huggingface_cache"
+		return categories.HuggingFaceCache
 	}
 
-	return "unknown"
-}
-
-func ClassifyFile(path string) string {
-	name := strings.ToLower(filepath.Base(path))
-	switch {
-	case strings.HasSuffix(name, ".dmg"),
-		strings.HasSuffix(name, ".pkg"),
-		strings.HasSuffix(name, ".mpkg"),
-		strings.HasSuffix(name, ".msi"),
-		strings.HasSuffix(name, ".exe"),
-		strings.HasSuffix(name, ".deb"),
-		strings.HasSuffix(name, ".rpm"),
-		strings.HasSuffix(name, ".appimage"):
-		return "installer"
-	case strings.HasSuffix(name, ".tar.gz"),
-		strings.HasSuffix(name, ".tar.bz2"),
-		strings.HasSuffix(name, ".tgz"),
-		strings.HasSuffix(name, ".tar.xz"),
-		strings.HasSuffix(name, ".zip"),
-		strings.HasSuffix(name, ".7z"),
-		strings.HasSuffix(name, ".rar"),
-		strings.HasSuffix(name, ".tar"),
-		strings.HasSuffix(name, ".gz"),
-		strings.HasSuffix(name, ".bz2"),
-		strings.HasSuffix(name, ".xz"):
-		return "archive"
-	}
-
-	return "unknown"
+	return categories.Unknown
 }
