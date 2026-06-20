@@ -7,6 +7,7 @@ import (
 
 	"github.com/SkAndMl/heimdall/internal/categories"
 	"github.com/SkAndMl/heimdall/internal/scan"
+	"github.com/SkAndMl/heimdall/internal/trash"
 )
 
 type Options struct {
@@ -33,12 +34,65 @@ func Clean(args Options) (string, error) {
 		sort.Slice(findings, func(i, j int) bool {
 			return findings[i].Size > findings[j].Size
 		})
-		if err := RunInteractiveClean(findings); err != nil {
+
+		selection, err := runInteractiveClean(findings)
+		if err != nil {
 			return "", err
 		}
+		return finishInteractiveClean(selection, trash.MoveToTrash)
 	}
 
 	return "", nil
+}
+
+func finishInteractiveClean(selection interactiveSelection, moveToTrash func(paths ...string) error) (string, error) {
+	if !selection.Confirmed {
+		return "", nil
+	}
+
+	paths := make([]string, 0, len(selection.Findings))
+	for _, finding := range selection.Findings {
+		paths = append(paths, finding.Path)
+	}
+
+	if err := moveToTrash(paths...); err != nil {
+		return "", fmt.Errorf("move selected cleanup candidates to Trash: %w", err)
+	}
+
+	return interactiveCleanReport(selection.Findings), nil
+}
+
+func interactiveCleanReport(findings []scan.Finding) string {
+	formatSize := func(size int64) string {
+		const unit = 1024
+		if size < unit {
+			return fmt.Sprintf("%d B", size)
+		}
+
+		value := float64(size)
+		units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+		unitIndex := 0
+		for value >= unit && unitIndex < len(units)-1 {
+			value /= unit
+			unitIndex++
+		}
+
+		if value >= 100 {
+			return fmt.Sprintf("%.0f %s", value, units[unitIndex])
+		}
+		return fmt.Sprintf("%.1f %s", value, units[unitIndex])
+	}
+
+	var selectedSize int64
+	for _, finding := range findings {
+		selectedSize += finding.Size
+	}
+
+	var b strings.Builder
+	b.WriteString("Cleanup complete.\n\n")
+	b.WriteString(fmt.Sprintf("Moved %d item(s) to Trash.\n", len(findings)))
+	b.WriteString(fmt.Sprintf("Freed: %s\n", formatSize(selectedSize)))
+	return b.String()
 }
 
 func DryRunReport(findingsByCategory map[categories.ID][]scan.Finding) string {

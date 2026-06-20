@@ -7,17 +7,19 @@ import (
 
 	"github.com/SkAndMl/heimdall/internal/categories"
 	"github.com/SkAndMl/heimdall/internal/scan"
-	"github.com/SkAndMl/heimdall/internal/trash"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type model struct {
-	findings        []scan.Finding
-	cursor          int
-	selected        map[int]bool
-	done            bool
-	totSizeSelected int64
-	trashErr        string
+	findings  []scan.Finding
+	cursor    int
+	selected  map[int]bool
+	confirmed bool
+}
+
+type interactiveSelection struct {
+	Confirmed bool
+	Findings  []scan.Finding
 }
 
 func initialModel(findings []scan.Finding) model {
@@ -31,19 +33,27 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+func (m model) selectedFindings() []scan.Finding {
+	selected := make([]scan.Finding, 0)
+	for i, finding := range m.findings {
+		if m.selected[i] {
+			selected = append(selected, finding)
+		}
+	}
+	return selected
+}
+
+func (m model) selection() interactiveSelection {
+	return interactiveSelection{
+		Confirmed: m.confirmed,
+		Findings:  m.selectedFindings(),
+	}
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.done {
-			switch msg.String() {
-			case "ctrl+c", "q":
-				return m, tea.Quit
-			default:
-				return m, nil
-			}
-		}
-
 		switch msg.String() {
 		case "up", "k":
 			if m.cursor > 0 {
@@ -56,26 +66,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "y":
-			m.done = true
-			paths := make([]string, 0)
-			for idx, ok := range m.selected {
-				if ok {
-					paths = append(paths, m.findings[idx].Path)
-				}
-			}
-			if err := trash.MoveToTrash(paths...); err != nil {
-				m.trashErr = err.Error()
-			}
+			m.confirmed = true
+			return m, tea.Quit
 		case "N":
 			return m, tea.Quit
 		case " ":
-			size := m.findings[m.cursor].Size
-			m.selected[m.cursor] = !m.selected[m.cursor]
-			if m.selected[m.cursor] {
-				m.totSizeSelected += size
-			} else {
-				m.totSizeSelected -= size
+			if len(m.findings) == 0 {
+				return m, nil
 			}
+			m.selected[m.cursor] = !m.selected[m.cursor]
 		}
 	}
 
@@ -101,30 +100,6 @@ func (m model) View() string {
 			return fmt.Sprintf("%.0f %s", value, units[unitIndex])
 		}
 		return fmt.Sprintf("%.1f %s", value, units[unitIndex])
-	}
-
-	if m.done {
-		var selectedCount int
-		var selectedSize int64
-		for i, finding := range m.findings {
-			if !m.selected[i] {
-				continue
-			}
-			selectedCount++
-			selectedSize += finding.Size
-		}
-
-		var b strings.Builder
-		if m.trashErr != "" {
-			b.WriteString("Cleanup failed.\n\n")
-			b.WriteString(fmt.Sprintf("Error: %s\n\n", m.trashErr))
-		} else {
-			b.WriteString("Cleanup complete.\n\n")
-			b.WriteString(fmt.Sprintf("Moved %d item(s) to Trash.\n", selectedCount))
-			b.WriteString(fmt.Sprintf("Freed: %s\n\n", formatSize(selectedSize)))
-		}
-		b.WriteString("Press q to exit.\n")
-		return b.String()
 	}
 
 	labelForPath := func(path string) string {
@@ -167,6 +142,12 @@ func (m model) View() string {
 
 	var b strings.Builder
 	b.WriteString("Select cleanup candidates\n\n")
+
+	if len(m.findings) == 0 {
+		b.WriteString("No cleanup candidates found.\n")
+		b.WriteString("\nq: quit\n")
+		return b.String()
+	}
 
 	const maxVisibleRows = 18
 	start := 0
@@ -222,10 +203,16 @@ func (m model) View() string {
 	return b.String()
 }
 
-func RunInteractiveClean(findings []scan.Finding) error {
+func runInteractiveClean(findings []scan.Finding) (interactiveSelection, error) {
 	p := tea.NewProgram(initialModel(findings), tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("run interactive clean: %w", err)
+	finalModel, err := p.Run()
+	if err != nil {
+		return interactiveSelection{}, fmt.Errorf("run interactive clean: %w", err)
 	}
-	return nil
+
+	m, ok := finalModel.(model)
+	if !ok {
+		return interactiveSelection{}, fmt.Errorf("run interactive clean: unexpected model %T", finalModel)
+	}
+	return m.selection(), nil
 }
