@@ -8,31 +8,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/SkAndMl/heimdall/internal/detectors"
 	"github.com/SkAndMl/heimdall/internal/util"
 )
-
-type ScanWarning struct {
-	Path    string
-	Type    string
-	Message string
-}
-
-type Scanner struct {
-	RootPath       string
-	RootNode       *Node
-	NumFiles       int
-	NumDirectories int
-	Warnings       []ScanWarning
-	MaxDepth       int
-}
-
-type Node struct {
-	Path     string
-	TotSize  int64
-	Type     string
-	Children []*Node
-	Depth    int
-}
 
 func NewScanner(path string, maxDepth int) (*Scanner, error) {
 	absPath, err := filepath.Abs(path)
@@ -40,8 +18,9 @@ func NewScanner(path string, maxDepth int) (*Scanner, error) {
 		return nil, err
 	}
 	scanner := Scanner{
-		RootPath: absPath,
-		MaxDepth: maxDepth,
+		RootPath:   absPath,
+		MaxDepth:   maxDepth,
+		Categories: make(map[string][]Finding),
 	}
 	rootNode, err := scanner.walkPath(scanner.RootPath, 0)
 	if err != nil {
@@ -82,6 +61,18 @@ func (s *Scanner) walkPath(path string, curDepth int) (*Node, error) {
 		node.TotSize = info.Size()
 		node.Depth = curDepth
 		s.NumFiles++
+
+		fileCategory := detectors.ClassifyFile(path)
+		if fileCategory != "unknown" {
+			if _, ok := s.Categories[fileCategory]; !ok {
+				s.Categories[fileCategory] = make([]Finding, 0)
+			}
+			s.Categories[fileCategory] = append(s.Categories[fileCategory], Finding{
+				Path: path,
+				Size: info.Size(),
+			})
+		}
+
 		return node, nil
 	}
 
@@ -118,6 +109,15 @@ func (s *Scanner) walkPath(path string, curDepth int) (*Node, error) {
 			node.Children = append(node.Children, childNode)
 		}
 	}
+
+	dirType := detectors.ClassifyDir(path)
+	if dirType != "unknown" {
+		s.Categories[dirType] = append(s.Categories[dirType], Finding{
+			Path: path,
+			Size: node.TotSize,
+		})
+	}
+
 	return node, nil
 }
 
@@ -151,7 +151,7 @@ func (s *Scanner) GetLargestEntries(nEntries int, entryType string) []*Node {
 	return largestEntries
 }
 
-func (s *Scanner) ScannerReport(limit int, jsonReport bool) string {
+func (s *Scanner) ScannerReport(limit int, jsonReport bool, explainReport bool) string {
 	formatCount := func(n int) string {
 		raw := fmt.Sprintf("%d", n)
 		if len(raw) <= 3 {
@@ -207,6 +207,73 @@ func (s *Scanner) ScannerReport(limit int, jsonReport bool) string {
 	if limit > 0 {
 		dirLimit = limit
 		fileLimit = limit
+	}
+
+	if explainReport {
+		type explanationSummary struct {
+			Label     string `json:"label"`
+			Group     string `json:"group"`
+			SizeBytes int64  `json:"size_bytes"`
+			Risk      string `json:"risk"`
+			Why       string `json:"why"`
+			Action    string `json:"action"`
+		}
+
+		summariesByGroup := make(map[string]explanationSummary)
+		for category, findings := range s.Categories {
+			explanation, ok := CategoryExplanations[category]
+			if !ok {
+				continue
+			}
+
+			summary := summariesByGroup[explanation.Group]
+			summary.Label = explanation.Label
+			summary.Group = explanation.Group
+			summary.Risk = explanation.Risk
+			summary.Why = explanation.Why
+			summary.Action = explanation.Action
+
+			for _, finding := range findings {
+				summary.SizeBytes += finding.Size
+			}
+			summariesByGroup[explanation.Group] = summary
+		}
+
+		summaries := make([]explanationSummary, 0, len(summariesByGroup))
+		for _, summary := range summariesByGroup {
+			summaries = append(summaries, summary)
+		}
+		sort.Slice(summaries, func(i, j int) bool {
+			return summaries[i].SizeBytes > summaries[j].SizeBytes
+		})
+
+		if limit > 0 && len(summaries) > limit {
+			summaries = summaries[:limit]
+		}
+
+		if jsonReport {
+			reportJSON, err := json.MarshalIndent(summaries, "", "  ")
+			if err != nil {
+				return err.Error()
+			}
+			return string(reportJSON)
+		}
+
+		if len(summaries) == 0 {
+			return "No explainable disk usage found."
+		}
+
+		var explainBuilder strings.Builder
+		for i, summary := range summaries {
+			if i > 0 {
+				explainBuilder.WriteString("\n")
+			}
+			explainBuilder.WriteString(fmt.Sprintf("%-8s %s\n", formatSize(summary.SizeBytes), summary.Label))
+			explainBuilder.WriteString(fmt.Sprintf("%-9s %s\n", "Risk:", summary.Risk))
+			explainBuilder.WriteString(fmt.Sprintf("%-9s %s\n", "Why:", summary.Why))
+			explainBuilder.WriteString(fmt.Sprintf("%-9s %s\n", "Action:", summary.Action))
+		}
+		return explainBuilder.String()
 	}
 
 	if jsonReport {
