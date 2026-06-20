@@ -1,8 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
-	"os"
+	"io"
 	"strconv"
 
 	"github.com/SkAndMl/heimdall/internal/clean"
@@ -13,6 +14,14 @@ type CLIArgs struct {
 	Subcommand string
 	ScanArgs   scan.Options
 	CleanArgs  clean.Options
+}
+
+type UsageError struct {
+	Message string
+}
+
+func (e UsageError) Error() string {
+	return e.Message
 }
 
 func usage() string {
@@ -28,12 +37,7 @@ Examples:
   heimdall scan ~ --json --explain --max-depth 2 --limit 25`
 }
 
-func exitWithUsage(message string) {
-	fmt.Fprintf(os.Stderr, "Error: %s\n\n%s\n", message, usage())
-	os.Exit(1)
-}
-
-func parseScanArgs(args []string) scan.Options {
+func parseScanArgs(args []string) (scan.Options, error) {
 	scanArgs := scan.Options{
 		JSONReport:    false,
 		ExplainReport: false,
@@ -42,7 +46,7 @@ func parseScanArgs(args []string) scan.Options {
 	}
 
 	if len(args) < 3 {
-		exitWithUsage("expected command: scan <path>")
+		return scanArgs, UsageError{Message: "expected command: scan <path>"}
 	}
 
 	scanArgs.Path = args[2]
@@ -54,40 +58,40 @@ func parseScanArgs(args []string) scan.Options {
 			scanArgs.ExplainReport = true
 		case "--max-depth":
 			if i+1 >= len(args) {
-				exitWithUsage("--max-depth requires a positive integer value")
+				return scanArgs, UsageError{Message: "--max-depth requires a positive integer value"}
 			}
 			depth, err := strconv.Atoi(args[i+1])
 			if err != nil || depth <= 0 {
-				exitWithUsage(fmt.Sprintf("invalid --max-depth value %q; expected a positive integer", args[i+1]))
+				return scanArgs, UsageError{Message: fmt.Sprintf("invalid --max-depth value %q; expected a positive integer", args[i+1])}
 			}
 			scanArgs.MaxDepth = depth
 			i++
 		case "--limit":
 			if i+1 >= len(args) {
-				exitWithUsage("--limit requires a positive integer value")
+				return scanArgs, UsageError{Message: "--limit requires a positive integer value"}
 			}
 			parsedLimit, err := strconv.Atoi(args[i+1])
 			if err != nil || parsedLimit <= 0 {
-				exitWithUsage(fmt.Sprintf("invalid --limit value %q; expected a positive integer", args[i+1]))
+				return scanArgs, UsageError{Message: fmt.Sprintf("invalid --limit value %q; expected a positive integer", args[i+1])}
 			}
 			scanArgs.Limit = parsedLimit
 			i++
 		default:
-			exitWithUsage(fmt.Sprintf("unknown option %q", args[i]))
+			return scanArgs, UsageError{Message: fmt.Sprintf("unknown option %q", args[i])}
 		}
 	}
 
-	return scanArgs
+	return scanArgs, nil
 }
 
-func parseCleanArgs(args []string) clean.Options {
+func parseCleanArgs(args []string) (clean.Options, error) {
 	cleanArgs := clean.Options{
 		DryRun:      false,
 		Interactive: false,
 	}
 
 	if len(args) != 4 {
-		exitWithUsage("clean subcommand is of invalid format")
+		return cleanArgs, UsageError{Message: "clean subcommand is of invalid format"}
 	}
 
 	cleanArgs.Path = args[2]
@@ -97,46 +101,80 @@ func parseCleanArgs(args []string) clean.Options {
 	case "--interactive":
 		cleanArgs.Interactive = true
 	default:
-		exitWithUsage("invalid option")
+		return cleanArgs, UsageError{Message: "invalid option"}
 	}
 
-	return cleanArgs
+	return cleanArgs, nil
 }
 
-func ParseArgs(args []string) *CLIArgs {
+func ParseArgs(args []string) (*CLIArgs, error) {
 
-	if len(args) <= 2 {
-		exitWithUsage("command is of invalid format")
+	if len(args) < 2 {
+		return nil, UsageError{Message: "command is of invalid format"}
 	}
 
 	cliArgs := &CLIArgs{Subcommand: args[1]}
 
 	switch args[1] {
 	case "scan":
-		cliArgs.ScanArgs = parseScanArgs(args)
+		scanArgs, err := parseScanArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		cliArgs.ScanArgs = scanArgs
 	case "clean":
-		cliArgs.CleanArgs = parseCleanArgs(args)
+		cleanArgs, err := parseCleanArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		cliArgs.CleanArgs = cleanArgs
 	default:
-		exitWithUsage("unrecognized subcommand")
+		return nil, UsageError{Message: "unrecognized subcommand"}
 	}
 
-	return cliArgs
+	return cliArgs, nil
 }
 
-func Run(args []string) {
-	parsedArgs := ParseArgs(args)
+func Run(args []string, stdout io.Writer, stderr io.Writer) int {
+	if err := run(args, stdout); err != nil {
+		var usageErr UsageError
+		if errors.As(err, &usageErr) {
+			fmt.Fprintf(stderr, "Error: %s\n\n%s\n", usageErr.Message, usage())
+			return 1
+		}
+
+		fmt.Fprintf(stderr, "Error: %s\n", err)
+		return 2
+	}
+
+	return 0
+}
+
+func run(args []string, stdout io.Writer) error {
+	parsedArgs, err := ParseArgs(args)
+	if err != nil {
+		return err
+	}
+
 	switch parsedArgs.Subcommand {
 	case "scan":
 		scanner, err := scan.NewScanner(parsedArgs.ScanArgs.Path, parsedArgs.ScanArgs.MaxDepth)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: scan failed: %s\n", err)
-			os.Exit(2)
+			return fmt.Errorf("scan failed: %w", err)
 		}
 
-		fmt.Println(scanner.ScannerReport(parsedArgs.ScanArgs.Limit, parsedArgs.ScanArgs.JSONReport, parsedArgs.ScanArgs.ExplainReport))
+		fmt.Fprintln(stdout, scanner.ScannerReport(parsedArgs.ScanArgs.Limit, parsedArgs.ScanArgs.JSONReport, parsedArgs.ScanArgs.ExplainReport))
 	case "clean":
-		clean.Clean(parsedArgs.CleanArgs)
+		report, err := clean.Clean(parsedArgs.CleanArgs)
+		if err != nil {
+			return fmt.Errorf("clean failed: %w", err)
+		}
+		if report != "" {
+			fmt.Fprintln(stdout, report)
+		}
 	default:
-		exitWithUsage("unrecognized subcommand")
+		return UsageError{Message: "unrecognized subcommand"}
 	}
+
+	return nil
 }

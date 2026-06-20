@@ -15,16 +15,14 @@ type Options struct {
 	Interactive bool
 }
 
-func Clean(args Options) {
+func Clean(args Options) (string, error) {
 	scanner, err := scan.NewScanner(args.Path, -1)
 	if err != nil {
-		// do something
-		fmt.Println(err.Error())
+		return "", fmt.Errorf("scan cleanup candidates: %w", err)
 	}
 
 	if args.DryRun {
-		fmt.Println(DryRunReport(scanner.Categories))
-		return
+		return DryRunReport(scanner.Categories), nil
 	}
 
 	if args.Interactive {
@@ -35,9 +33,12 @@ func Clean(args Options) {
 		sort.Slice(findings, func(i, j int) bool {
 			return findings[i].Size > findings[j].Size
 		})
-		RunInteractiveClean(findings)
+		if err := RunInteractiveClean(findings); err != nil {
+			return "", err
+		}
 	}
 
+	return "", nil
 }
 
 func DryRunReport(categories map[string][]scan.Finding) string {

@@ -2,7 +2,6 @@ package clean
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -265,8 +264,7 @@ func (m model) View() string {
 func RunInteractiveClean(findings []scan.Finding) error {
 	p := tea.NewProgram(initialModel(findings), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+		return fmt.Errorf("run interactive clean: %w", err)
 	}
 	return nil
 }
