@@ -227,7 +227,8 @@ func DryRunReport(findingsByCategory map[categories.ID][]scan.Finding) string {
 				continue
 			}
 			if !wroteSection {
-				b.WriteString(section + ":\n")
+				b.WriteString(section)
+				b.WriteString(":\n")
 				wroteSection = true
 			}
 			b.WriteString(fmt.Sprintf("  %-*s %s\n", sizeWidth, formatSize(summary.size), summary.label))
