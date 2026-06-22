@@ -38,10 +38,19 @@ func TestCleanDryRunReturnsReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Clean() error = %v, want nil", err)
 	}
-	if !strings.Contains(report, "Heimdall Cleanup Plan") {
+	if !strings.Contains(report, "◉ HEIMDALL") {
 		t.Fatalf("Clean() report = %q, want cleanup plan", report)
+	}
+	if !strings.Contains(report, "Cleanup plan") {
+		t.Fatalf("Clean() report = %q, want cleanup plan title", report)
+	}
+	if !strings.Contains(report, "Potentially reclaimable") {
+		t.Fatalf("Clean() report = %q, want reclaimable summary", report)
 	}
 	if !strings.Contains(report, "Python bytecode cache") {
 		t.Fatalf("Clean() report = %q, want python cache summary", report)
+	}
+	if !strings.Contains(report, "No files were changed.") {
+		t.Fatalf("Clean() report = %q, want dry-run safety copy", report)
 	}
 }

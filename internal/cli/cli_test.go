@@ -88,8 +88,11 @@ func TestRunScanWritesReport(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Heimdall Scan Report") {
+	if !strings.Contains(stdout.String(), "◉ HEIMDALL") {
 		t.Fatalf("stdout = %q, want scan report", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Disk scan") {
+		t.Fatalf("stdout = %q, want scan report title", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), dir) {
 		t.Fatalf("stdout = %q, want scanned path %q", stdout.String(), dir)
