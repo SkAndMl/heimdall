@@ -60,11 +60,54 @@ func TestFinishInteractiveCleanMovesConfirmedSelection(t *testing.T) {
 	if movedPaths[0] != "/tmp/archive.zip" || movedPaths[1] != "/tmp/app.dmg" {
 		t.Fatalf("moved paths = %#v, want selected paths in order", movedPaths)
 	}
-	if !strings.Contains(report, "Moved 2 item(s) to Trash.") {
+	if !strings.Contains(report, "Moved 2 artifacts to Trash") {
 		t.Fatalf("report = %q, want moved count", report)
 	}
-	if !strings.Contains(report, "Freed: 3.0 KB") {
+	if !strings.Contains(report, "3.0 KB") {
 		t.Fatalf("report = %q, want selected size", report)
+	}
+	if strings.Contains(report, "Freed") {
+		t.Fatalf("report = %q, did not want overpromising freed-space copy", report)
+	}
+}
+
+func TestInteractiveViewShowsDesignedSummary(t *testing.T) {
+	findings := []scan.Finding{
+		{Path: "/tmp/archive.zip", Size: 1024, Category: categories.Archive},
+		{Path: "/tmp/app.dmg", Size: 2048, Category: categories.Installer},
+	}
+
+	m := initialModel("/tmp", findings)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
+	m = updated.(model)
+
+	view := m.View()
+	if !strings.Contains(view, "◉ HEIMDALL") {
+		t.Fatalf("View() = %q, want product header", view)
+	}
+	if !strings.Contains(view, "Potentially reclaimable") {
+		t.Fatalf("View() = %q, want reclaimable summary", view)
+	}
+	if !strings.Contains(view, "Selected") || !strings.Contains(view, "1.0 KB") {
+		t.Fatalf("View() = %q, want selected-size summary", view)
+	}
+	if !strings.Contains(view, "✓") {
+		t.Fatalf("View() = %q, want selected marker", view)
+	}
+	if !strings.Contains(view, "Space Select") {
+		t.Fatalf("View() = %q, want keyboard hint", view)
+	}
+}
+
+func TestInteractiveViewShowsEmptyState(t *testing.T) {
+	m := initialModel("/tmp", nil)
+
+	view := m.View()
+	if !strings.Contains(view, "No cleanup candidates found yet.") {
+		t.Fatalf("View() = %q, want empty state", view)
+	}
+	if !strings.Contains(view, "q Quit") {
+		t.Fatalf("View() = %q, want quit hint", view)
 	}
 }
 

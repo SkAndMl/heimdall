@@ -10,6 +10,7 @@ import (
 
 	"github.com/SkAndMl/heimdall/internal/categories"
 	"github.com/SkAndMl/heimdall/internal/detectors"
+	"github.com/SkAndMl/heimdall/internal/presentation"
 	"github.com/SkAndMl/heimdall/internal/util"
 )
 
@@ -192,11 +193,6 @@ func (s *Scanner) ScannerReport(limit int, jsonReport bool, explainReport bool) 
 		return fmt.Sprintf("%.1f %s", value, units[unitIndex])
 	}
 
-	var b strings.Builder
-
-	b.WriteString("Heimdall Scan Report\n\n")
-	b.WriteString(fmt.Sprintf("%-21s%s\n", "Path scanned:", s.RootPath))
-
 	totalSize := int64(0)
 	if s.RootNode != nil {
 		totalSize = s.RootNode.TotSize
@@ -260,18 +256,27 @@ func (s *Scanner) ScannerReport(limit int, jsonReport bool, explainReport bool) 
 		}
 
 		if len(summaries) == 0 {
-			return "No explainable disk usage found."
+			return "No cleanup categories found yet."
 		}
 
 		var explainBuilder strings.Builder
+		explainBuilder.WriteString(presentation.Brand("◉ HEIMDALL"))
+		explainBuilder.WriteString("\n\n")
+		explainBuilder.WriteString(presentation.Title("Cleanup categories"))
+		explainBuilder.WriteString("\n")
+		explainBuilder.WriteString(presentation.Divider("──────────────────────────────────────────────────────────────────"))
+		explainBuilder.WriteString("\n\n")
 		for i, summary := range summaries {
 			if i > 0 {
 				explainBuilder.WriteString("\n")
 			}
-			explainBuilder.WriteString(fmt.Sprintf("%-8s %s\n", formatSize(summary.SizeBytes), summary.Label))
-			explainBuilder.WriteString(fmt.Sprintf("%-9s %s\n", "Risk:", summary.Risk))
-			explainBuilder.WriteString(fmt.Sprintf("%-9s %s\n", "Why:", summary.Why))
-			explainBuilder.WriteString(fmt.Sprintf("%-9s %s\n", "Action:", summary.Action))
+			explainBuilder.WriteString(fmt.Sprintf("%s   %s\n",
+				presentation.MetricValue(fmt.Sprintf("%10s", formatSize(summary.SizeBytes))),
+				presentation.Primary(summary.Label),
+			))
+			explainBuilder.WriteString(fmt.Sprintf("%s %s\n", presentation.Muted(fmt.Sprintf("%13s", "Risk:")), presentation.Risk(summary.Risk)))
+			explainBuilder.WriteString(fmt.Sprintf("%s %s\n", presentation.Muted(fmt.Sprintf("%13s", "Why:")), presentation.Muted(summary.Why)))
+			explainBuilder.WriteString(fmt.Sprintf("%s %s\n", presentation.Muted(fmt.Sprintf("%13s", "Action:")), presentation.Method(summary.Action)))
 		}
 		return explainBuilder.String()
 	}
@@ -348,39 +353,64 @@ func (s *Scanner) ScannerReport(limit int, jsonReport bool, explainReport bool) 
 		return string(reportJSON)
 	}
 
-	b.WriteString(fmt.Sprintf("%-21s%s\n", "Total size:", formatSize(totalSize)))
-	b.WriteString(fmt.Sprintf("%-21s%s\n", "Files scanned:", formatCount(s.NumFiles)))
-	b.WriteString(fmt.Sprintf("%-21s%s\n", "Directories scanned:", formatCount(s.NumDirectories)))
-	b.WriteString(fmt.Sprintf("%-21s%s\n\n", "Skipped paths:", formatCount(len(s.Warnings))))
+	var b strings.Builder
 
-	b.WriteString("Largest directories:\n")
+	b.WriteString(presentation.Brand("◉ HEIMDALL"))
+	b.WriteString("\n\n")
+	b.WriteString(presentation.Title("Disk scan"))
+	b.WriteString("\n")
+	b.WriteString(presentation.Divider("──────────────────────────────────────────────────────────────────"))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("%s%s\n", presentation.Muted(fmt.Sprintf("%-21s", "Path scanned")), presentation.Path(s.RootPath)))
+	b.WriteString(fmt.Sprintf("%s%s\n", presentation.Muted(fmt.Sprintf("%-21s", "Total size")), presentation.MetricValue(formatSize(totalSize))))
+	b.WriteString(fmt.Sprintf("%s%s\n", presentation.Muted(fmt.Sprintf("%-21s", "Files scanned")), presentation.Primary(formatCount(s.NumFiles))))
+	b.WriteString(fmt.Sprintf("%s%s\n", presentation.Muted(fmt.Sprintf("%-21s", "Directories scanned")), presentation.Primary(formatCount(s.NumDirectories))))
+	b.WriteString(fmt.Sprintf("%s%s\n\n", presentation.Muted(fmt.Sprintf("%-21s", "Skipped paths")), presentation.Primary(formatCount(len(s.Warnings)))))
+
+	b.WriteString(presentation.Title("Largest directories:"))
+	b.WriteString("\n")
 	dirsAdded := 0
 	for _, dir := range s.GetLargestEntries(dirLimit+1, "dir") {
 		if dir == nil || dir.Path == s.RootPath {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("  %-8s %s\n", formatSize(dir.TotSize), dir.Path))
+		b.WriteString(fmt.Sprintf("  %s   %s\n",
+			presentation.MetricValue(fmt.Sprintf("%10s", formatSize(dir.TotSize))),
+			presentation.Path(dir.Path),
+		))
 		dirsAdded++
 		if dirsAdded >= dirLimit {
 			break
 		}
 	}
 
-	b.WriteString("\nLargest files:\n")
+	b.WriteString("\n")
+	b.WriteString(presentation.Title("Largest files:"))
+	b.WriteString("\n")
 	for _, file := range s.GetLargestEntries(fileLimit, "file") {
 		if file == nil {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("  %-8s %s\n", formatSize(file.TotSize), file.Path))
+		b.WriteString(fmt.Sprintf("  %s   %s\n",
+			presentation.MetricValue(fmt.Sprintf("%10s", formatSize(file.TotSize))),
+			presentation.Path(file.Path),
+		))
 	}
 
 	if len(s.Warnings) == 0 {
 		return b.String()
 	}
 
-	b.WriteString("\nWarnings:\n")
+	b.WriteString("\n")
+	b.WriteString(presentation.Title("Warnings:"))
+	b.WriteString("\n")
 	for _, warning := range s.Warnings {
-		b.WriteString(fmt.Sprintf("  %-18s %s (%s)\n", warning.Type+":", warning.Path, warning.Message))
+		b.WriteString(fmt.Sprintf("  %s %s %s %s\n",
+			presentation.Warning("!"),
+			presentation.Warning(fmt.Sprintf("%-16s", warning.Type)),
+			presentation.Path(warning.Path),
+			presentation.Muted("("+warning.Message+")"),
+		))
 	}
 
 	return b.String()

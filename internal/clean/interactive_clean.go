@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/SkAndMl/heimdall/internal/categories"
+	"github.com/SkAndMl/heimdall/internal/presentation"
 	"github.com/SkAndMl/heimdall/internal/scan"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -92,26 +93,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	formatSize := func(size int64) string {
-		const unit = 1024
-		if size < unit {
-			return fmt.Sprintf("%d B", size)
-		}
-
-		value := float64(size)
-		units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
-		unitIndex := 0
-		for value >= unit && unitIndex < len(units)-1 {
-			value /= unit
-			unitIndex++
-		}
-
-		if value >= 100 {
-			return fmt.Sprintf("%.0f %s", value, units[unitIndex])
-		}
-		return fmt.Sprintf("%.1f %s", value, units[unitIndex])
-	}
-
 	labelForPath := func(path string) string {
 		clean := filepath.Clean(path)
 		relPath, err := filepath.Rel(m.rootPath, clean)
@@ -129,14 +110,23 @@ func (m model) View() string {
 		return categories.RiskReviewRecommended
 	}
 
+	actionLabel := func(action string) string {
+		if action == categories.ActionSelectManually {
+			return "review selected items before moving to Trash"
+		}
+		return "move selected items to Trash"
+	}
+
 	const (
-		nameWidth = 54
-		sizeWidth = 8
+		nameWidth = 50
+		sizeWidth = 10
 	)
 
+	var reclaimableSize int64
 	var selectedSize int64
 	action := categories.ActionMoveToTrash
 	for i, finding := range m.findings {
+		reclaimableSize += finding.Size
 		if !m.selected[i] {
 			continue
 		}
@@ -147,13 +137,32 @@ func (m model) View() string {
 	}
 
 	var b strings.Builder
-	b.WriteString("Select cleanup candidates\n\n")
+	b.WriteString(presentation.Brand("◉ HEIMDALL"))
+	b.WriteString("\n\n")
+	b.WriteString(presentation.Title("Cleanup candidates"))
+	b.WriteString("\n")
+	b.WriteString(presentation.Divider("──────────────────────────────────────────────────────────────────"))
+	b.WriteString("\n\n")
 
 	if len(m.findings) == 0 {
-		b.WriteString("No cleanup candidates found.\n")
-		b.WriteString("\nq: quit\n")
+		b.WriteString(presentation.Primary("No cleanup candidates found yet."))
+		b.WriteString("\n\n")
+		b.WriteString(presentation.Muted("Run a scan to inspect developer artifacts, installers, and caches."))
+		b.WriteString("\n")
+		b.WriteString("\n")
+		b.WriteString(presentation.Muted("q Quit"))
+		b.WriteString("\n")
 		return b.String()
 	}
+
+	b.WriteString(fmt.Sprintf("%s %s\n",
+		presentation.Muted(fmt.Sprintf("%-26s", "Potentially reclaimable")),
+		presentation.MetricValue(fmt.Sprintf("%16s", formatSize(reclaimableSize))),
+	))
+	b.WriteString(fmt.Sprintf("%s %s\n\n",
+		presentation.Muted(fmt.Sprintf("%-26s", "Selected")),
+		presentation.MetricValue(fmt.Sprintf("%16s", formatSize(selectedSize))),
+	))
 
 	const maxVisibleRows = 18
 	start := 0
@@ -166,49 +175,49 @@ func (m model) View() string {
 	}
 
 	if start > 0 {
-		b.WriteString(fmt.Sprintf("  ... %d more above\n", start))
+		b.WriteString(presentation.Muted(fmt.Sprintf("  · %d more above", start)))
+		b.WriteString("\n")
 	}
 
 	for i := start; i < end; i++ {
 		finding := m.findings[i]
-		checkbox := "[ ]"
+		checkbox := presentation.Unselected("○")
 		if m.selected[i] {
-			checkbox = "[x]"
+			checkbox = presentation.Selected("✓")
 		}
 
 		cursor := "  "
 		if i == m.cursor {
-			cursor = "> "
+			cursor = presentation.Focus("›") + " "
 		}
 
 		label := labelForPath(finding.Path)
 		if len(label) > nameWidth {
-			left := (nameWidth - 3) / 2
-			right := nameWidth - 3 - left
-			label = label[:left] + "..." + label[len(label)-right:]
+			label = "..." + label[len(label)-(nameWidth-3):]
 		}
 
-		b.WriteString(fmt.Sprintf("%s%s %-*s %-*s %s\n",
+		b.WriteString(fmt.Sprintf("%s%s  %s %s   %s\n",
 			cursor,
 			checkbox,
-			nameWidth,
-			label,
-			sizeWidth,
-			formatSize(finding.Size),
-			riskForFinding(finding),
+			presentation.Path(fmt.Sprintf("%-*s", nameWidth, label)),
+			presentation.MetricValue(fmt.Sprintf("%*s", sizeWidth, formatSize(finding.Size))),
+			presentation.Risk(riskForFinding(finding)),
 		))
 	}
 
 	if end < len(m.findings) {
-		b.WriteString(fmt.Sprintf("  ... %d more below\n", len(m.findings)-end))
+		b.WriteString(presentation.Muted(fmt.Sprintf("  · %d more below", len(m.findings)-end)))
+		b.WriteString("\n")
 	}
 
-	b.WriteString(fmt.Sprintf("\nSelected: %s\n", formatSize(selectedSize)))
-	b.WriteString(fmt.Sprintf("Action: %s\n", action))
+	b.WriteString(fmt.Sprintf("\n%s %s\n", presentation.Muted("Method:"), presentation.Method(actionLabel(action))))
 	b.WriteString("Continue? y/N\n")
-	b.WriteString("\nup/down or j/k: move | space: toggle | y: confirm | q: quit\n")
+	b.WriteString("\n")
+	b.WriteString(presentation.Muted("↑↓ or j/k Move   Space Select   y Confirm   n/q Quit"))
+	b.WriteString("\n")
 	if m.noneSelectedYesPressed {
-		b.WriteString("\nSelect at least one item before continuing.")
+		b.WriteString("\n")
+		b.WriteString(presentation.Warning("Select at least one candidate before continuing."))
 	}
 	return b.String()
 }

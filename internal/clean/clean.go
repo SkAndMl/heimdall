@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/SkAndMl/heimdall/internal/categories"
+	"github.com/SkAndMl/heimdall/internal/presentation"
 	"github.com/SkAndMl/heimdall/internal/scan"
 	"github.com/SkAndMl/heimdall/internal/trash"
 )
@@ -14,6 +15,33 @@ type Options struct {
 	Path        string
 	DryRun      bool
 	Interactive bool
+}
+
+func formatSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+
+	value := float64(size)
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	unitIndex := 0
+	for value >= unit && unitIndex < len(units)-1 {
+		value /= unit
+		unitIndex++
+	}
+
+	if value >= 100 {
+		return fmt.Sprintf("%.0f %s", value, units[unitIndex])
+	}
+	return fmt.Sprintf("%.1f %s", value, units[unitIndex])
+}
+
+func pluralize(count int, singular string, plural string) string {
+	if count == 1 {
+		return fmt.Sprintf("%d %s", count, singular)
+	}
+	return fmt.Sprintf("%d %s", count, plural)
 }
 
 func Clean(args Options) (string, error) {
@@ -63,66 +91,24 @@ func finishInteractiveClean(selection interactiveSelection, moveToTrash func(pat
 }
 
 func interactiveCleanReport(findings []scan.Finding) string {
-	formatSize := func(size int64) string {
-		const unit = 1024
-		if size < unit {
-			return fmt.Sprintf("%d B", size)
-		}
-
-		value := float64(size)
-		units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
-		unitIndex := 0
-		for value >= unit && unitIndex < len(units)-1 {
-			value /= unit
-			unitIndex++
-		}
-
-		if value >= 100 {
-			return fmt.Sprintf("%.0f %s", value, units[unitIndex])
-		}
-		return fmt.Sprintf("%.1f %s", value, units[unitIndex])
-	}
-
 	var selectedSize int64
 	for _, finding := range findings {
 		selectedSize += finding.Size
 	}
 
 	var b strings.Builder
-	b.WriteString("Cleanup complete.\n\n")
-	b.WriteString(fmt.Sprintf("Moved %d item(s) to Trash.\n", len(findings)))
-	b.WriteString(fmt.Sprintf("Freed: %s\n", formatSize(selectedSize)))
+	b.WriteString(presentation.Success("✓ Cleanup complete"))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("%s %s\n",
+		presentation.Primary(fmt.Sprintf("%-40s", fmt.Sprintf("Moved %s to Trash", pluralize(len(findings), "artifact", "artifacts")))),
+		presentation.MetricValue(fmt.Sprintf("%10s", formatSize(selectedSize))),
+	))
+	b.WriteString(presentation.Muted("Your available disk space may update after the OS refreshes."))
+	b.WriteString("\n")
 	return b.String()
 }
 
 func DryRunReport(findingsByCategory map[categories.ID][]scan.Finding) string {
-	formatSize := func(size int64) string {
-		const unit = 1024
-		if size < unit {
-			return fmt.Sprintf("%d B", size)
-		}
-
-		value := float64(size)
-		units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
-		unitIndex := 0
-		for value >= unit && unitIndex < len(units)-1 {
-			value /= unit
-			unitIndex++
-		}
-
-		if value >= 100 {
-			return fmt.Sprintf("%.0f %s", value, units[unitIndex])
-		}
-		return fmt.Sprintf("%.1f %s", value, units[unitIndex])
-	}
-
-	pluralize := func(count int, singular string, plural string) string {
-		if count == 1 {
-			return fmt.Sprintf("%d %s", count, singular)
-		}
-		return fmt.Sprintf("%d %s", count, plural)
-	}
-
 	wrapText := func(text string, width int) []string {
 		words := strings.Fields(text)
 		if len(words) == 0 {
@@ -207,15 +193,25 @@ func DryRunReport(findingsByCategory map[categories.ID][]scan.Finding) string {
 	})
 
 	var b strings.Builder
-	b.WriteString("Heimdall Cleanup Plan\n\n")
+	b.WriteString(presentation.Brand("◉ HEIMDALL"))
+	b.WriteString("\n\n")
+	b.WriteString(presentation.Title("Cleanup plan"))
+	b.WriteString("\n")
+	b.WriteString(presentation.Divider("──────────────────────────────────────────────────────────────────"))
+	b.WriteString("\n\n")
 
 	totalSelectable := int64(0)
 	for _, summary := range summaries {
 		totalSelectable += summary.size
 	}
 
+	b.WriteString(fmt.Sprintf("%s %s\n\n",
+		presentation.Muted(fmt.Sprintf("%-32s", "Potentially reclaimable")),
+		presentation.MetricValue(fmt.Sprintf("%16s", formatSize(totalSelectable))),
+	))
+
 	const (
-		sizeWidth   = 8
+		sizeWidth   = 10
 		detailPad   = "            "
 		detailWidth = 68
 	)
@@ -227,21 +223,26 @@ func DryRunReport(findingsByCategory map[categories.ID][]scan.Finding) string {
 				continue
 			}
 			if !wroteSection {
-				b.WriteString(section)
+				b.WriteString(presentation.Title(section))
 				b.WriteString(":\n")
 				wroteSection = true
 			}
-			b.WriteString(fmt.Sprintf("  %-*s %s\n", sizeWidth, formatSize(summary.size), summary.label))
+			b.WriteString(fmt.Sprintf("  %s   %s\n",
+				presentation.MetricValue(fmt.Sprintf("%*s", sizeWidth, formatSize(summary.size))),
+				presentation.Primary(summary.label),
+			))
 			for _, line := range wrapText(summary.detail, detailWidth) {
-				b.WriteString(fmt.Sprintf("%s%s\n", detailPad, line))
+				b.WriteString(fmt.Sprintf("%s%s\n", detailPad, presentation.Muted(line)))
 			}
-			b.WriteString(fmt.Sprintf("%sAction: %s\n\n", detailPad, summary.action))
+			b.WriteString(fmt.Sprintf("%s%s %s\n\n", detailPad, presentation.Muted("Method:"), presentation.Method(summary.action)))
 		}
 	}
 
-	b.WriteString(fmt.Sprintf("Total safely selectable: %s\n\n", formatSize(totalSelectable)))
-	b.WriteString("No files were changed. Run:\n")
-	b.WriteString("  heimdall clean ~ --interactive")
+	b.WriteString(presentation.Success("No files were changed."))
+	b.WriteString("\n")
+	b.WriteString(presentation.Muted("Review the candidates interactively before moving anything to Trash:"))
+	b.WriteString("\n")
+	b.WriteString(presentation.Method("  heimdall clean ~ --interactive"))
 
 	return b.String()
 }
