@@ -35,7 +35,7 @@ func Clean(args Options) (string, error) {
 			return findings[i].Size > findings[j].Size
 		})
 
-		selection, err := runInteractiveClean(findings)
+		selection, err := runInteractiveClean(args.Path, findings)
 		if err != nil {
 			return "", err
 		}

@@ -16,7 +16,7 @@ func TestInteractiveModelConfirmsSelectedFindings(t *testing.T) {
 		{Path: "/tmp/app.dmg", Size: 2048, Category: categories.Installer},
 	}
 
-	m := initialModel(findings)
+	m := initialModel("/tmp", findings)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
 	m = updated.(model)

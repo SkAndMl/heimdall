@@ -11,10 +11,12 @@ import (
 )
 
 type model struct {
-	findings  []scan.Finding
-	cursor    int
-	selected  map[int]bool
-	confirmed bool
+	rootPath               string
+	findings               []scan.Finding
+	cursor                 int
+	selected               map[int]bool
+	confirmed              bool
+	noneSelectedYesPressed bool
 }
 
 type interactiveSelection struct {
@@ -22,8 +24,9 @@ type interactiveSelection struct {
 	Findings  []scan.Finding
 }
 
-func initialModel(findings []scan.Finding) model {
+func initialModel(rootPath string, findings []scan.Finding) model {
 	return model{
+		rootPath: rootPath,
 		findings: findings,
 		selected: make(map[int]bool),
 	}
@@ -52,6 +55,8 @@ func (m model) selection() interactiveSelection {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
+	m.noneSelectedYesPressed = false
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -66,9 +71,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "y":
+			if len(m.selectedFindings()) == 0 {
+				m.noneSelectedYesPressed = true
+				return m, nil
+			}
+
 			m.confirmed = true
 			return m, tea.Quit
-		case "N":
+		case "N", "n":
 			return m, tea.Quit
 		case " ":
 			if len(m.findings) == 0 {
@@ -104,16 +114,12 @@ func (m model) View() string {
 
 	labelForPath := func(path string) string {
 		clean := filepath.Clean(path)
-		base := filepath.Base(clean)
-		parent := filepath.Base(filepath.Dir(clean))
-
-		switch base {
-		case "node_modules", ".venv", "venv":
-			if parent != "." && parent != string(filepath.Separator) {
-				return filepath.Join(parent, base)
-			}
+		relPath, err := filepath.Rel(m.rootPath, clean)
+		pathToReturn := clean
+		if err == nil {
+			pathToReturn = relPath
 		}
-		return base
+		return pathToReturn
 	}
 
 	riskForFinding := func(finding scan.Finding) string {
@@ -124,7 +130,7 @@ func (m model) View() string {
 	}
 
 	const (
-		nameWidth = 30
+		nameWidth = 54
 		sizeWidth = 8
 	)
 
@@ -177,7 +183,9 @@ func (m model) View() string {
 
 		label := labelForPath(finding.Path)
 		if len(label) > nameWidth {
-			label = label[:nameWidth-3] + "..."
+			left := (nameWidth - 3) / 2
+			right := nameWidth - 3 - left
+			label = label[:left] + "..." + label[len(label)-right:]
 		}
 
 		b.WriteString(fmt.Sprintf("%s%s %-*s %-*s %s\n",
@@ -199,12 +207,14 @@ func (m model) View() string {
 	b.WriteString(fmt.Sprintf("Action: %s\n", action))
 	b.WriteString("Continue? y/N\n")
 	b.WriteString("\nup/down or j/k: move | space: toggle | y: confirm | q: quit\n")
-
+	if m.noneSelectedYesPressed {
+		b.WriteString("\nSelect at least one item before continuing.")
+	}
 	return b.String()
 }
 
-func runInteractiveClean(findings []scan.Finding) (interactiveSelection, error) {
-	p := tea.NewProgram(initialModel(findings), tea.WithAltScreen())
+func runInteractiveClean(rootPath string, findings []scan.Finding) (interactiveSelection, error) {
+	p := tea.NewProgram(initialModel(rootPath, findings), tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
 		return interactiveSelection{}, fmt.Errorf("run interactive clean: %w", err)

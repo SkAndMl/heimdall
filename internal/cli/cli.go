@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 
 	"github.com/SkAndMl/heimdall/internal/clean"
@@ -86,7 +87,12 @@ func parseScanArgs(args []string) (scan.Options, error) {
 		return scanArgs, UsageError{Message: "expected command: scan <path>", Command: "scan"}
 	}
 
-	scanArgs.Path = args[2]
+	absPath, err := filepath.Abs(args[2])
+	if err != nil {
+		return scanArgs, err
+	}
+	scanArgs.Path = absPath
+
 	for i := 3; i < len(args); i++ {
 		switch args[i] {
 		case "--json":
@@ -131,7 +137,12 @@ func parseCleanArgs(args []string) (clean.Options, error) {
 		return cleanArgs, UsageError{Message: "expected command: clean <path> (--dry-run | --interactive)", Command: "clean"}
 	}
 
-	cleanArgs.Path = args[2]
+	absPath, err := filepath.Abs(args[2])
+	if err != nil {
+		return cleanArgs, err
+	}
+	cleanArgs.Path = absPath
+
 	switch args[3] {
 	case "--dry-run":
 		cleanArgs.DryRun = true
