@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/SkAndMl/heimdall/internal/categories"
 	"github.com/SkAndMl/heimdall/internal/detectors"
 	"github.com/SkAndMl/heimdall/internal/util"
 )
@@ -20,7 +21,7 @@ func NewScanner(path string, maxDepth int) (*Scanner, error) {
 	scanner := Scanner{
 		RootPath:   absPath,
 		MaxDepth:   maxDepth,
-		Categories: make(map[string][]Finding),
+		Categories: make(map[categories.ID][]Finding),
 	}
 	rootNode, err := scanner.walkPath(scanner.RootPath, 0)
 	if err != nil {
@@ -62,14 +63,12 @@ func (s *Scanner) walkPath(path string, curDepth int) (*Node, error) {
 		node.Depth = curDepth
 		s.NumFiles++
 
-		fileCategory := detectors.ClassifyFile(path)
-		if fileCategory != "unknown" {
-			if _, ok := s.Categories[fileCategory]; !ok {
-				s.Categories[fileCategory] = make([]Finding, 0)
-			}
+		fileCategory := categories.ClassifyFile(path)
+		if fileCategory != categories.Unknown {
 			s.Categories[fileCategory] = append(s.Categories[fileCategory], Finding{
-				Path: path,
-				Size: info.Size(),
+				Path:     path,
+				Size:     info.Size(),
+				Category: fileCategory,
 			})
 		}
 
@@ -111,10 +110,11 @@ func (s *Scanner) walkPath(path string, curDepth int) (*Node, error) {
 	}
 
 	dirType := detectors.ClassifyDir(path)
-	if dirType != "unknown" {
+	if dirType != categories.Unknown {
 		s.Categories[dirType] = append(s.Categories[dirType], Finding{
-			Path: path,
-			Size: node.TotSize,
+			Path:     path,
+			Size:     node.TotSize,
+			Category: dirType,
 		})
 	}
 
@@ -221,7 +221,7 @@ func (s *Scanner) ScannerReport(limit int, jsonReport bool, explainReport bool) 
 
 		summariesByGroup := make(map[string]explanationSummary)
 		for category, findings := range s.Categories {
-			explanation, ok := CategoryExplanations[category]
+			explanation, ok := categories.Lookup(category)
 			if !ok {
 				continue
 			}
