@@ -3,6 +3,7 @@ package run
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,23 @@ func Run(args *RunArgs) error {
 		return err
 	}
 
+	stdoutFile, err := os.Create(filepath.Join(sessionDir, "stdout.log"))
+	if err != nil {
+		return err
+	}
+	stderrFile, err := os.Create(filepath.Join(sessionDir, "stderr.log"))
+	if err != nil {
+		return err
+	}
+
+	filesClosed := false
+	defer func() {
+		if !filesClosed {
+			stdoutFile.Close()
+			stderrFile.Close()
+		}
+	}()
+
 	session := Session{
 		ID:      sessionId,
 		Name:    args.Name,
@@ -54,9 +72,13 @@ func Run(args *RunArgs) error {
 		cmd.Dir = args.Cwd
 	}
 
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if args.Detach {
+		cmd.Stdout = stdoutFile
+		cmd.Stderr = stderrFile
+	} else {
+		cmd.Stdout = io.MultiWriter(os.Stdout, stdoutFile)
+		cmd.Stderr = io.MultiWriter(os.Stderr, stderrFile)
+	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
@@ -79,6 +101,13 @@ func Run(args *RunArgs) error {
 	sessionSavePath := filepath.Join(sessionDir, "sessions.json")
 	if err := os.WriteFile(sessionSavePath, data, 0644); err != nil {
 		return err
+	}
+
+	if args.Detach {
+		stdoutFile.Close()
+		stderrFile.Close()
+		filesClosed = true
+		return nil
 	}
 
 	if err := cmd.Wait(); err != nil {
