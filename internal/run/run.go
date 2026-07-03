@@ -1,16 +1,13 @@
 package run
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"os/signal"
 	"syscall"
-
-	"github.com/SkAndMl/heimdall/internal/config"
-	"github.com/google/uuid"
+	"time"
 )
 
 type RunArgs struct {
@@ -20,52 +17,13 @@ type RunArgs struct {
 	Detach  bool
 }
 
-type Session struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Cwd     string   `json:"cwd"`
-	PID     int      `json:"pid"`
-	PGID    int      `json:"pgid"`
-	Command []string `json:"command"`
-}
-
 func Run(args *RunArgs) error {
 
-	home, err := os.UserHomeDir()
+	session, err := NewSession(args.Name, args.Cwd, args.Command)
 	if err != nil {
 		return err
 	}
-
-	uuid := uuid.New().ID()
-	sessionId := fmt.Sprintf("heim_%d", uuid)
-	sessionDir := filepath.Join(home, config.BASE_DIR, "sessions", sessionId)
-	if err := os.MkdirAll(sessionDir, 0755); err != nil {
-		return err
-	}
-
-	stdoutFile, err := os.Create(filepath.Join(sessionDir, "stdout.log"))
-	if err != nil {
-		return err
-	}
-	stderrFile, err := os.Create(filepath.Join(sessionDir, "stderr.log"))
-	if err != nil {
-		return err
-	}
-
-	filesClosed := false
-	defer func() {
-		if !filesClosed {
-			stdoutFile.Close()
-			stderrFile.Close()
-		}
-	}()
-
-	session := Session{
-		ID:      sessionId,
-		Name:    args.Name,
-		Cwd:     args.Cwd,
-		Command: args.Command[:],
-	}
+	defer session.Close()
 
 	cmd := exec.Command(args.Command[0], args.Command[1:]...)
 	if len(args.Cwd) > 0 {
@@ -73,11 +31,11 @@ func Run(args *RunArgs) error {
 	}
 
 	if args.Detach {
-		cmd.Stdout = stdoutFile
-		cmd.Stderr = stderrFile
+		cmd.Stdout = session.StdoutFile
+		cmd.Stderr = session.StderrFile
 	} else {
-		cmd.Stdout = io.MultiWriter(os.Stdout, stdoutFile)
-		cmd.Stderr = io.MultiWriter(os.Stderr, stderrFile)
+		cmd.Stdout = io.MultiWriter(os.Stdout, session.StdoutFile)
+		cmd.Stderr = io.MultiWriter(os.Stderr, session.StderrFile)
 	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -88,31 +46,47 @@ func Run(args *RunArgs) error {
 		return err
 	}
 
-	pid := cmd.Process.Pid
-	pgid := pid
+	session.PID = cmd.Process.Pid
+	session.PGID = cmd.Process.Pid
+	session.StartedAt = time.Now()
 
-	session.PID = pid
-	session.PGID = pgid
-
-	data, err := json.MarshalIndent(session, "", " ")
-	if err != nil {
-		return err
-	}
-	sessionSavePath := filepath.Join(sessionDir, "sessions.json")
-	if err := os.WriteFile(sessionSavePath, data, 0644); err != nil {
+	if err := session.SetStatus("running"); err != nil {
+		_ = syscall.Kill(-session.PGID, syscall.SIGTERM)
+		_ = cmd.Wait()
 		return err
 	}
 
 	if args.Detach {
-		stdoutFile.Close()
-		stderrFile.Close()
-		filesClosed = true
 		return nil
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return err
-	}
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
 
-	return nil
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+
+	select {
+	case err := <-waitCh:
+		if err != nil {
+			session.SetStatus("failed")
+			return err
+		}
+		return session.SetStatus("finished")
+	case sig := <-signals:
+		session.SetStatus("stopping")
+		if err := syscall.Kill(-session.PGID, syscall.SIGTERM); err != nil {
+			session.SetStatus("kill_failed")
+		}
+		err := <-waitCh
+		session.SetStatus("killed")
+		if err != nil {
+			return fmt.Errorf("received %s, terminated process group %d: %w", sig, session.PGID, err)
+		}
+
+		return fmt.Errorf("received %s, terminated process group %d", sig, session.PGID)
+	}
 }
