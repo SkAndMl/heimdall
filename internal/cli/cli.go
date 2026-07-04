@@ -3,7 +3,9 @@ package cli
 import (
 	"fmt"
 
+	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
+	"github.com/SkAndMl/heimdall/internal/session"
 )
 
 // heimdall run [flags] -- command
@@ -45,5 +47,41 @@ func ParseRunArgs(args []string) (*run.RunArgs, error) {
 		}
 	}
 
+	if len(runArgs.Command) == 0 {
+		return nil, fmt.Errorf("No command available\n")
+	}
+
 	return runArgs, nil
+}
+
+// heimdall ps [flags]
+// --all, --status status_name, --json
+
+func ParsePsArgs(args []string) (*ps.PsArgs, error) {
+	psArgs := &ps.PsArgs{}
+
+	if len(args) < 2 || args[1] != "ps" {
+		return nil, fmt.Errorf("Invalid command format\n")
+	}
+
+	for i := 2; i < len(args); {
+		switch args[i] {
+		case "--all":
+			psArgs.All = true
+			i += 1
+		case "--status":
+			if i+1 == len(args) {
+				return nil, fmt.Errorf("No value passed for '--status' flag\n")
+			}
+			psArgs.Status = session.Status(args[i+1])
+			i += 2
+		case "--json":
+			psArgs.JSONOutput = true
+			i += 1
+		default:
+			return nil, fmt.Errorf("Invalid command format\n")
+		}
+	}
+
+	return psArgs, nil
 }

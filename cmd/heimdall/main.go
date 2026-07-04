@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/SkAndMl/heimdall/internal/cli"
 	"github.com/SkAndMl/heimdall/internal/config"
+	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
 )
 
@@ -30,11 +32,28 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	parsedArgs, err := cli.ParseRunArgs(os.Args)
-	if err != nil {
-		log.Fatalln(err)
+	args := os.Args
+	if len(args) < 2 {
+		log.Fatalln(fmt.Errorf("Invalid command"))
 	}
-	if err := run.Run(parsedArgs); err != nil {
-		log.Fatal(err)
+
+	switch args[1] {
+	case "run":
+		parsedArgs, err := cli.ParseRunArgs(os.Args)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if err := run.HanldeRunCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		}
+	case "ps":
+		parsedArgs, err := cli.ParsePsArgs(os.Args)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if err := ps.HandlePsCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		}
 	}
+
 }
