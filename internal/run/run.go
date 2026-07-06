@@ -19,7 +19,7 @@ type RunArgs struct {
 	Detach  bool
 }
 
-func HanldeRunCommand(args *RunArgs) error {
+func HandleRunCommand(args *RunArgs) error {
 
 	runtimeSession, err := session.NewSession(args.Name, args.Cwd, args.Command)
 	if err != nil {

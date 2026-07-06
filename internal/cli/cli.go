@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/SkAndMl/heimdall/internal/inspect"
 	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
 	"github.com/SkAndMl/heimdall/internal/session"
@@ -84,4 +85,16 @@ func ParsePsArgs(args []string) (*ps.PsArgs, error) {
 	}
 
 	return psArgs, nil
+}
+
+// heimdall inspect <session-ref>
+func ParseInspectArgs(args []string) (*inspect.InspectArgs, error) {
+	if len(args) != 3 || args[1] != "inspect" {
+		return nil, fmt.Errorf("Invalid command\n")
+	}
+
+	inspectArgs := &inspect.InspectArgs{
+		SessionRef: args[2],
+	}
+	return inspectArgs, nil
 }

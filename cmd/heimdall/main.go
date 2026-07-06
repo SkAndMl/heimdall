@@ -10,6 +10,7 @@ import (
 
 	"github.com/SkAndMl/heimdall/internal/cli"
 	"github.com/SkAndMl/heimdall/internal/config"
+	"github.com/SkAndMl/heimdall/internal/inspect"
 	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
 )
@@ -39,21 +40,31 @@ func main() {
 
 	switch args[1] {
 	case "run":
-		parsedArgs, err := cli.ParseRunArgs(os.Args)
+		parsedArgs, err := cli.ParseRunArgs(args)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if err := run.HanldeRunCommand(parsedArgs); err != nil {
+		if err := run.HandleRunCommand(parsedArgs); err != nil {
 			log.Fatalln(err)
 		}
 	case "ps":
-		parsedArgs, err := cli.ParsePsArgs(os.Args)
+		parsedArgs, err := cli.ParsePsArgs(args)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		if err := ps.HandlePsCommand(parsedArgs); err != nil {
 			log.Fatalln(err)
 		}
+	case "inspect":
+		parsedArgs, err := cli.ParseInspectArgs(args)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if err := inspect.HandleInspectCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		}
+	default:
+		log.Fatalln(fmt.Errorf("Unrecognized command\n"))
 	}
 
 }
