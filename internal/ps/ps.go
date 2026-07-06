@@ -64,14 +64,14 @@ func getSessions(args *PsArgs) ([]sessionPkg.Session, error) {
 			continue
 		}
 
-		allFilter, statusFilter := false, false
+		if args.Status != "" {
+			if session.Status == args.Status {
+				sessions = append(sessions, session)
+			}
+			continue
+		}
+
 		if args.All || session.Status == sessionPkg.StatusRunning {
-			allFilter = true
-		}
-		if args.Status == "" || args.Status == session.Status {
-			statusFilter = true
-		}
-		if allFilter && statusFilter {
 			sessions = append(sessions, session)
 		}
 	}
