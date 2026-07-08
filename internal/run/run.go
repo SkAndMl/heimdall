@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/SkAndMl/heimdall/internal/session"
+	sessionPkg "github.com/SkAndMl/heimdall/internal/session"
 )
 
 type RunArgs struct {
@@ -21,11 +21,18 @@ type RunArgs struct {
 
 func HandleRunCommand(args *RunArgs) error {
 
-	runtimeSession, err := session.NewSession(args.Name, args.Cwd, args.Command)
+	session, err := sessionPkg.NewSession(args.Name, args.Cwd, args.Command)
 	if err != nil {
 		return err
 	}
-	defer runtimeSession.Close()
+
+	stdout, stderr, err := session.OpenLogFiles()
+	if err != nil {
+		return err
+	}
+
+	defer stdout.Close()
+	defer stderr.Close()
 
 	cmd := exec.Command(args.Command[0], args.Command[1:]...)
 	if len(args.Cwd) > 0 {
@@ -33,11 +40,11 @@ func HandleRunCommand(args *RunArgs) error {
 	}
 
 	if args.Detach {
-		cmd.Stdout = runtimeSession.StdoutFile
-		cmd.Stderr = runtimeSession.StderrFile
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
 	} else {
-		cmd.Stdout = io.MultiWriter(os.Stdout, runtimeSession.StdoutFile)
-		cmd.Stderr = io.MultiWriter(os.Stderr, runtimeSession.StderrFile)
+		cmd.Stdout = io.MultiWriter(os.Stdout, stdout)
+		cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
 	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -48,14 +55,12 @@ func HandleRunCommand(args *RunArgs) error {
 		return err
 	}
 
-	runtimeSession.SetPID(cmd.Process.Pid)
-	runtimeSession.SetPGID(cmd.Process.Pid)
-	runtimeSession.Session.StartedAt = time.Now()
+	session.PID = cmd.Process.Pid
+	session.PGID = cmd.Process.Pid
+	session.StartedAt = time.Now()
 
-	pgid := runtimeSession.GetPGID()
-
-	if err := runtimeSession.SetStatus("running"); err != nil {
-		_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	if err := session.SetStatus("running"); err != nil {
+		_ = syscall.Kill(-session.PGID, syscall.SIGTERM)
 		_ = cmd.Wait()
 		return err
 	}
@@ -76,21 +81,21 @@ func HandleRunCommand(args *RunArgs) error {
 	select {
 	case err := <-waitCh:
 		if err != nil {
-			runtimeSession.SetStatus(session.StatusFailed)
+			session.SetStatus(sessionPkg.StatusFailed)
 			return err
 		}
-		return runtimeSession.SetStatus(session.StatusFinished)
+		return session.SetStatus(sessionPkg.StatusFinished)
 	case sig := <-signals:
-		runtimeSession.SetStatus(session.StatusStopping)
-		if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
-			runtimeSession.SetStatus(session.StatusKillFailed)
+		session.SetStatus(sessionPkg.StatusStopping)
+		if err := syscall.Kill(-session.PGID, syscall.SIGTERM); err != nil {
+			session.SetStatus(sessionPkg.StatusKillFailed)
 		}
 		err := <-waitCh
-		runtimeSession.SetStatus(session.StatusKilled)
+		session.SetStatus(sessionPkg.StatusKilled)
 		if err != nil {
-			return fmt.Errorf("received %s, terminated process group %d: %w", sig, pgid, err)
+			return fmt.Errorf("received %s, terminated process group %d: %w", sig, session.PGID, err)
 		}
 
-		return fmt.Errorf("received %s, terminated process group %d", sig, pgid)
+		return fmt.Errorf("received %s, terminated process group %d", sig, session.PGID)
 	}
 }

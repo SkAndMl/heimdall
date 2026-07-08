@@ -13,31 +13,24 @@ func TestNewSessionCreatesFilesAndMetadata(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	runtimeSession, err := NewSession("api", "/tmp/project", []string{"python", "app.py"})
+	session, err := NewSession("api", "/tmp/project", []string{"python", "app.py"})
 	if err != nil {
 		t.Fatalf("NewSession returned error: %v", err)
 	}
-	defer runtimeSession.Close()
 
-	if runtimeSession.Session.ID == "" {
+	if session.ID == "" {
 		t.Fatal("session ID is empty")
 	}
-	if runtimeSession.Session.Name != "api" {
-		t.Fatalf("Name = %q, want api", runtimeSession.Session.Name)
+	if session.Name != "api" {
+		t.Fatalf("Name = %q, want api", session.Name)
 	}
-	if runtimeSession.Session.Status != StatusNotStarted {
-		t.Fatalf("Status = %q, want %q", runtimeSession.Session.Status, StatusNotStarted)
+	if session.Status != StatusNotStarted {
+		t.Fatalf("Status = %q, want %q", session.Status, StatusNotStarted)
 	}
 
-	sessionPath := filepath.Join(runtimeSession.SessionDir, "session.json")
+	sessionPath := filepath.Join(sessionDir(homeDir, session.ID), "session.json")
 	if _, err := os.Stat(sessionPath); err != nil {
 		t.Fatalf("session.json not created: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(runtimeSession.SessionDir, "stdout.log")); err != nil {
-		t.Fatalf("stdout.log not created: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(runtimeSession.SessionDir, "stderr.log")); err != nil {
-		t.Fatalf("stderr.log not created: %v", err)
 	}
 
 	var saved Session
@@ -48,8 +41,8 @@ func TestNewSessionCreatesFilesAndMetadata(t *testing.T) {
 	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatalf("unmarshalling session.json: %v", err)
 	}
-	if saved.ID != runtimeSession.Session.ID {
-		t.Fatalf("saved ID = %q, want %q", saved.ID, runtimeSession.Session.ID)
+	if saved.ID != session.ID {
+		t.Fatalf("saved ID = %q, want %q", saved.ID, session.ID)
 	}
 }
 
@@ -57,17 +50,16 @@ func TestSetStatusPersistsStatus(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	runtimeSession, err := NewSession("worker", "", []string{"sleep", "1"})
+	session, err := NewSession("worker", "", []string{"sleep", "1"})
 	if err != nil {
 		t.Fatalf("NewSession returned error: %v", err)
 	}
-	defer runtimeSession.Close()
 
-	if err := runtimeSession.SetStatus(StatusRunning); err != nil {
+	if err := session.SetStatus(StatusRunning); err != nil {
 		t.Fatalf("SetStatus returned error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(runtimeSession.SessionDir, "session.json"))
+	data, err := os.ReadFile(filepath.Join(sessionDir(homeDir, session.ID), "session.json"))
 	if err != nil {
 		t.Fatalf("reading session.json: %v", err)
 	}
@@ -85,14 +77,67 @@ func TestNewSessionUsesConfiguredBaseDir(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	runtimeSession, err := NewSession("api", "", []string{"true"})
+	session, err := NewSession("api", "", []string{"true"})
 	if err != nil {
 		t.Fatalf("NewSession returned error: %v", err)
 	}
-	defer runtimeSession.Close()
 
 	wantPrefix := filepath.Join(homeDir, config.BASE_DIR, "sessions")
-	if filepath.Dir(runtimeSession.SessionDir) != wantPrefix {
-		t.Fatalf("SessionDir = %q, want parent %q", runtimeSession.SessionDir, wantPrefix)
+	gotSessionDir := sessionDir(homeDir, session.ID)
+	if filepath.Dir(gotSessionDir) != wantPrefix {
+		t.Fatalf("SessionDir = %q, want parent %q", gotSessionDir, wantPrefix)
 	}
+}
+
+func TestOpenLogFilesCreatesWritableLogs(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	session, err := NewSession("api", "", []string{"true"})
+	if err != nil {
+		t.Fatalf("NewSession returned error: %v", err)
+	}
+
+	stdoutFile, stderrFile, err := session.OpenLogFiles()
+	if err != nil {
+		t.Fatalf("OpenLogFiles returned error: %v", err)
+	}
+	defer stdoutFile.Close()
+	defer stderrFile.Close()
+
+	if _, err := stdoutFile.WriteString("stdout-message"); err != nil {
+		t.Fatalf("writing stdout log: %v", err)
+	}
+	if _, err := stderrFile.WriteString("stderr-message"); err != nil {
+		t.Fatalf("writing stderr log: %v", err)
+	}
+
+	stdoutPath, err := session.StdoutPath()
+	if err != nil {
+		t.Fatalf("StdoutPath returned error: %v", err)
+	}
+	stderrPath, err := session.StdErrPath()
+	if err != nil {
+		t.Fatalf("StdErrPath returned error: %v", err)
+	}
+
+	stdout, err := os.ReadFile(stdoutPath)
+	if err != nil {
+		t.Fatalf("reading stdout log: %v", err)
+	}
+	if string(stdout) != "stdout-message" {
+		t.Fatalf("stdout.log = %q, want stdout-message", string(stdout))
+	}
+
+	stderr, err := os.ReadFile(stderrPath)
+	if err != nil {
+		t.Fatalf("reading stderr log: %v", err)
+	}
+	if string(stderr) != "stderr-message" {
+		t.Fatalf("stderr.log = %q, want stderr-message", string(stderr))
+	}
+}
+
+func sessionDir(homeDir, sessionID string) string {
+	return filepath.Join(homeDir, config.BASE_DIR, "sessions", sessionID)
 }

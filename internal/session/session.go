@@ -36,14 +36,7 @@ type Session struct {
 	Status    Status    `json:"status"`
 }
 
-type RuntimeSession struct {
-	Session    *Session
-	SessionDir string
-	StdoutFile *os.File
-	StderrFile *os.File
-}
-
-func NewSession(name string, cwd string, command []string) (*RuntimeSession, error) {
+func NewSession(name string, cwd string, command []string) (*Session, error) {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -56,16 +49,6 @@ func NewSession(name string, cwd string, command []string) (*RuntimeSession, err
 		return nil, err
 	}
 
-	stdoutFile, err := os.Create(filepath.Join(sessionDir, "stdout.log"))
-	if err != nil {
-		return nil, err
-	}
-	stderrFile, err := os.Create(filepath.Join(sessionDir, "stderr.log"))
-	if err != nil {
-		stdoutFile.Close()
-		return nil, err
-	}
-
 	session := &Session{
 		ID:      sessionId,
 		Name:    name,
@@ -74,53 +57,74 @@ func NewSession(name string, cwd string, command []string) (*RuntimeSession, err
 		Status:  StatusNotStarted,
 	}
 
-	runtimeSession := &RuntimeSession{
-		Session:    session,
-		SessionDir: sessionDir,
-		StdoutFile: stdoutFile,
-		StderrFile: stderrFile,
-	}
-
-	if err := runtimeSession.SaveSession(); err != nil {
-		stdoutFile.Close()
-		stderrFile.Close()
+	if err := session.Save(); err != nil {
 		return nil, err
 	}
 
-	return runtimeSession, nil
+	return session, nil
 }
 
-func (r *RuntimeSession) SaveSession() error {
-	data, err := json.MarshalIndent(r.Session, "", " ")
+func (s *Session) Save() error {
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(r.SessionDir, "session.json"), data, 0644); err != nil {
+
+	sessionDir := filepath.Join(home, config.BASE_DIR, "sessions", s.ID)
+	data, err := json.MarshalIndent(s, "", " ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "session.json"), data, 0644); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *RuntimeSession) SetStatus(status Status) error {
-	r.Session.Status = status
-	return r.SaveSession()
+func (s *Session) SetStatus(status Status) error {
+	s.Status = status
+	return s.Save()
 }
 
-func (r *RuntimeSession) Close() {
-	r.StdoutFile.Close()
-	r.StderrFile.Close()
+func (s *Session) StdoutPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, config.BASE_DIR, "sessions", s.ID, "stdout.log"), nil
 }
 
-func (r *RuntimeSession) GetPGID() int {
-	return r.Session.PGID
+func (s *Session) StdErrPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, config.BASE_DIR, "sessions", s.ID, "stderr.log"), nil
 }
 
-func (r *RuntimeSession) SetPID(pid int) {
-	r.Session.PID = pid
-}
+func (s *Session) OpenLogFiles() (*os.File, *os.File, error) {
+	stdoutPath, err := s.StdoutPath()
+	if err != nil {
+		return nil, nil, err
+	}
 
-func (r *RuntimeSession) SetPGID(pgid int) {
-	r.Session.PGID = pgid
+	stderrPath, err := s.StdErrPath()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	stdoutFile, err := os.Create(stdoutPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	stderrFile, err := os.Create(stderrPath)
+	if err != nil {
+		stdoutFile.Close()
+		return nil, nil, err
+	}
+
+	return stdoutFile, stderrFile, nil
+
 }
 
 func FindSessionByRef(sessionRef string) (*Session, error) {
