@@ -2,12 +2,10 @@ package inspect
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -29,72 +27,6 @@ type process struct {
 type logFile struct {
 	label string
 	path  string
-}
-
-func findSessionByRef(sessionRef string) (*sessionPkg.Session, error) {
-
-	dirRe := regexp.MustCompile(`^heim_[a-z0-9-]+$`)
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	sessionsDir := filepath.Join(homeDir, config.BASE_DIR, "sessions")
-	info, err := os.Lstat(sessionsDir)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("Sessions dir does not exist")
-	}
-
-	dirEntries, err := os.ReadDir(sessionsDir)
-	if err != nil {
-		return nil, err
-	}
-
-	matchedSessionsByIDPrefix := make([]sessionPkg.Session, 0)
-	matchedSessionByName := make([]sessionPkg.Session, 0)
-
-	for _, entry := range dirEntries {
-		var session sessionPkg.Session
-
-		info, err := os.Lstat(filepath.Join(sessionsDir, entry.Name()))
-		if err != nil || !info.IsDir() || !dirRe.MatchString(entry.Name()) {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(sessionsDir, entry.Name(), "session.json"))
-		if err != nil {
-			continue
-		}
-		if err := json.Unmarshal(data, &session); err != nil {
-			continue
-		}
-
-		if session.ID == sessionRef {
-			return &session, nil
-		} else if strings.HasPrefix(session.ID, sessionRef) {
-			matchedSessionsByIDPrefix = append(matchedSessionsByIDPrefix, session)
-		} else if session.Name == sessionRef {
-			matchedSessionByName = append(matchedSessionByName, session)
-		}
-	}
-
-	if len(matchedSessionsByIDPrefix) == 1 {
-		return &matchedSessionsByIDPrefix[0], nil
-	}
-	if len(matchedSessionsByIDPrefix) > 1 {
-		return nil, fmt.Errorf("More than one session matched\n")
-	}
-
-	if len(matchedSessionByName) == 1 {
-		return &matchedSessionByName[0], nil
-	}
-	if len(matchedSessionByName) > 1 {
-		return nil, fmt.Errorf("More than one session matched\n")
-	}
-
-	return nil, nil
 }
 
 func findProcessesInGroup(pgid int) ([]process, error) {
@@ -210,7 +142,7 @@ func formatStartedAt(startedAt time.Time) string {
 }
 
 func HandleInspectCommand(args *InspectArgs) error {
-	session, err := findSessionByRef(args.SessionRef)
+	session, err := sessionPkg.FindSessionByRef(args.SessionRef)
 	if err != nil {
 		return err
 	}

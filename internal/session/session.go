@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/SkAndMl/heimdall/internal/config"
@@ -119,4 +121,70 @@ func (r *RuntimeSession) SetPID(pid int) {
 
 func (r *RuntimeSession) SetPGID(pgid int) {
 	r.Session.PGID = pgid
+}
+
+func FindSessionByRef(sessionRef string) (*Session, error) {
+
+	dirRe := regexp.MustCompile(`^heim_[a-z0-9-]+$`)
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	sessionsDir := filepath.Join(homeDir, config.BASE_DIR, "sessions")
+	info, err := os.Lstat(sessionsDir)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("Sessions dir does not exist")
+	}
+
+	dirEntries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	matchedSessionsByIDPrefix := make([]Session, 0)
+	matchedSessionByName := make([]Session, 0)
+
+	for _, entry := range dirEntries {
+		var session Session
+
+		info, err := os.Lstat(filepath.Join(sessionsDir, entry.Name()))
+		if err != nil || !info.IsDir() || !dirRe.MatchString(entry.Name()) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(sessionsDir, entry.Name(), "session.json"))
+		if err != nil {
+			continue
+		}
+		if err := json.Unmarshal(data, &session); err != nil {
+			continue
+		}
+
+		if session.ID == sessionRef {
+			return &session, nil
+		} else if strings.HasPrefix(session.ID, sessionRef) {
+			matchedSessionsByIDPrefix = append(matchedSessionsByIDPrefix, session)
+		} else if session.Name == sessionRef {
+			matchedSessionByName = append(matchedSessionByName, session)
+		}
+	}
+
+	if len(matchedSessionsByIDPrefix) == 1 {
+		return &matchedSessionsByIDPrefix[0], nil
+	}
+	if len(matchedSessionsByIDPrefix) > 1 {
+		return nil, fmt.Errorf("More than one session matched\n")
+	}
+
+	if len(matchedSessionByName) == 1 {
+		return &matchedSessionByName[0], nil
+	}
+	if len(matchedSessionByName) > 1 {
+		return nil, fmt.Errorf("More than one session matched\n")
+	}
+
+	return nil, nil
 }

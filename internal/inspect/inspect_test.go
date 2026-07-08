@@ -25,7 +25,7 @@ func TestFindSessionByRefMatchesExactIDPrefixAndName(t *testing.T) {
 
 	for _, ref := range []string{session.ID, "heim_aaaaaaaa", "api"} {
 		t.Run(ref, func(t *testing.T) {
-			found, err := findSessionByRef(ref)
+			found, err := sessionPkg.FindSessionByRef(ref)
 			if err != nil {
 				t.Fatalf("findSessionByRef returned error: %v", err)
 			}
@@ -52,7 +52,7 @@ func TestFindSessionByRefRejectsAmbiguousPrefix(t *testing.T) {
 		Name: "worker",
 	})
 
-	if _, err := findSessionByRef("heim_bbbbbbbb"); err == nil {
+	if _, err := sessionPkg.FindSessionByRef("heim_bbbbbbbb"); err == nil {
 		t.Fatal("findSessionByRef returned nil error for ambiguous prefix")
 	}
 }
