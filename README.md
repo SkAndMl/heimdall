@@ -19,7 +19,7 @@ For local development, you can also run it without building:
 go run ./cmd/heimdall ps
 ```
 
-The CLI currently supports `run`, `ps`, and `inspect`.
+The CLI currently supports `run`, `ps`, `inspect`, and `stop`.
 
 ## Run A Command
 
@@ -78,6 +78,37 @@ Text output:
 ```text
 ID                                      NAME    STATUS     PID     AGE    COMMAND
 heim_478baf61-0212-424d-a32e-8a5db5c939fa api  running    4843    4m     python app.py
+```
+
+## Stop A Session
+
+```sh
+heimdall stop <session-ref> [flags]
+```
+
+`stop` sends `SIGTERM` to the session's process group, waits for the grace
+duration, and sends `SIGKILL` if processes remain. Session metadata and log
+files stay in `~/.heimdall/sessions` for later inspection.
+
+Flags:
+
+- `--grace <seconds>`: seconds to wait before escalating to `SIGKILL`
+  (default: `2`)
+
+Examples:
+
+```sh
+heimdall stop api
+heimdall stop heim_478baf61 --grace 5
+```
+
+Output:
+
+```text
+Stopping heim_478baf61-0212-424d-a32e-8a5db5c939fa (api)...
+Sent SIGTERM to process group 4843.
+All processes exited.
+Session marked stopped.
 ```
 
 ## Inspect A Session

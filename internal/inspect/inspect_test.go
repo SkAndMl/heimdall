@@ -10,6 +10,7 @@ import (
 
 	"github.com/SkAndMl/heimdall/internal/config"
 	sessionPkg "github.com/SkAndMl/heimdall/internal/session"
+	"github.com/SkAndMl/heimdall/internal/util"
 )
 
 func TestFindSessionByRefMatchesExactIDPrefixAndName(t *testing.T) {
@@ -82,9 +83,9 @@ func TestFormatInspectOutputIncludesLogsAndProcesses(t *testing.T) {
 		t.Fatalf("creating stderr.log: %v", err)
 	}
 
-	output := formatInspectOutput(&session, []process{
-		{pid: 1235, command: "python worker.py"},
-		{pid: 1236, command: "python watcher.py"},
+	output := formatInspectOutput(&session, []util.Process{
+		{PID: 1235, Command: "python worker.py"},
+		{PID: 1236, Command: "python watcher.py"},
 	})
 
 	for _, want := range []string{

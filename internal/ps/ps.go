@@ -115,9 +115,7 @@ func formatAge(startedAt time.Time) string {
 	}
 
 	age := time.Since(startedAt)
-	if age < 0 {
-		age = 0
-	}
+	age = max(0, age)
 
 	switch {
 	case age < time.Minute:

@@ -13,6 +13,7 @@ import (
 	"github.com/SkAndMl/heimdall/internal/inspect"
 	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
+	"github.com/SkAndMl/heimdall/internal/stop"
 )
 
 func main() {
@@ -61,6 +62,14 @@ func main() {
 			log.Fatalln(err)
 		}
 		if err := inspect.HandleInspectCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		}
+	case "stop":
+		parsedArgs, err := cli.ParseStopArgs(args)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if err := stop.HandleStopCommand(parsedArgs); err != nil {
 			log.Fatalln(err)
 		}
 	default:

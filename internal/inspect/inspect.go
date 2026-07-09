@@ -4,24 +4,18 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/SkAndMl/heimdall/internal/config"
 	sessionPkg "github.com/SkAndMl/heimdall/internal/session"
+	"github.com/SkAndMl/heimdall/internal/util"
 )
 
 type InspectArgs struct {
 	SessionRef string
-}
-
-type process struct {
-	pid     int
-	command string
 }
 
 type logFile struct {
@@ -29,49 +23,7 @@ type logFile struct {
 	path  string
 }
 
-func findProcessesInGroup(pgid int) ([]process, error) {
-	processes := make([]process, 0)
-
-	data, err := exec.Command(
-		"ps",
-		"-axww",
-		"-o",
-		"pid=,pgid=,command=",
-	).Output()
-
-	if err != nil {
-		return processes, err
-	}
-
-	for _, line := range strings.Split(string(data), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil {
-			continue
-		}
-		if pid == pgid {
-			continue // skip group head
-		}
-
-		if cpgid, err := strconv.Atoi(fields[1]); err != nil {
-			continue
-		} else if cpgid != pgid {
-			continue
-		}
-
-		processes = append(processes, process{
-			pid:     pid,
-			command: strings.Join(fields[2:], " "),
-		})
-	}
-	return processes, nil
-}
-
-func formatInspectOutput(session *sessionPkg.Session, childProcesses []process) string {
+func formatInspectOutput(session *sessionPkg.Session, childProcesses []util.Process) string {
 	if session == nil {
 		return ""
 	}
@@ -101,7 +53,7 @@ func formatInspectOutput(session *sessionPkg.Session, childProcesses []process) 
 	childWriter := tabwriter.NewWriter(&output, 0, 0, 4, ' ', 0)
 	fmt.Fprintln(childWriter, "PID\tCOMMAND")
 	for _, process := range childProcesses {
-		fmt.Fprintf(childWriter, "%d\t%s\n", process.pid, process.command)
+		fmt.Fprintf(childWriter, "%d\t%s\n", process.PID, process.Command)
 	}
 	childWriter.Flush()
 
@@ -150,7 +102,7 @@ func HandleInspectCommand(args *InspectArgs) error {
 		return fmt.Errorf("session %q not found", args.SessionRef)
 	}
 
-	childProcesses, err := findProcessesInGroup(session.PGID)
+	childProcesses, err := util.FindProcessesInGroup(session.PGID, true)
 	if err != nil {
 		return err
 	}
