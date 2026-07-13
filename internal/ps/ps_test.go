@@ -2,6 +2,7 @@ package ps
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,6 +108,26 @@ func TestFormatPsOutputJSON(t *testing.T) {
 	}
 	if sessions[0].Command[0] != "go" {
 		t.Fatalf("command = %#v, want go test ./...", sessions[0].Command)
+	}
+}
+
+func TestGetSessionsReconcilesStaleRunningSession(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSession(t, homeDir, sessionPkg.Session{
+		ID:     "heim_55555555-5555-5555-5555-555555555555",
+		Name:   "stale",
+		Status: sessionPkg.StatusRunning,
+		PID:    math.MaxInt32,
+	})
+
+	sessions, err := getSessions(&PsArgs{})
+	if err != nil {
+		t.Fatalf("getSessions returned error: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("len(sessions) = %d, want 0 (stale session should be reconciled away)", len(sessions))
 	}
 }
 

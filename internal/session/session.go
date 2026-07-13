@@ -2,11 +2,13 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/SkAndMl/heimdall/internal/config"
@@ -84,6 +86,19 @@ func (s *Session) Save() error {
 func (s *Session) SetStatus(status Status) error {
 	s.Status = status
 	return s.Save()
+}
+
+// Reconcile checks whether a running session's process is still alive and
+// updates the status to finished if the process no longer exists.
+func (s *Session) Reconcile() error {
+	if s.Status != StatusRunning || s.PID <= 0 {
+		return nil
+	}
+	err := syscall.Kill(s.PID, 0)
+	if err == nil || errors.Is(err, syscall.EPERM) {
+		return nil
+	}
+	return s.SetStatus(StatusFinished)
 }
 
 func (s *Session) StdoutPath() (string, error) {
@@ -166,6 +181,8 @@ func FindSessionByRef(sessionRef string) (*Session, error) {
 		if err := json.Unmarshal(data, &session); err != nil {
 			continue
 		}
+
+		_ = session.Reconcile()
 
 		if session.ID == sessionRef {
 			return &session, nil

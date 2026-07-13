@@ -64,6 +64,8 @@ func getSessions(args *PsArgs) ([]sessionPkg.Session, error) {
 			continue
 		}
 
+		_ = session.Reconcile()
+
 		if args.Status != "" {
 			if session.Status == args.Status {
 				sessions = append(sessions, session)
