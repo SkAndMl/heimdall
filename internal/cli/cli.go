@@ -16,7 +16,7 @@ import (
 func ParseRunArgs(args []string) (*run.RunArgs, error) {
 	runArgs := &run.RunArgs{}
 
-	if len(args) < 2 || args[1] != "run" {
+	if len(args) < 2 || (args[1] != "run" && args[1] != "_run-supervisor") {
 		return nil, fmt.Errorf("Subcommand is not run\n")
 	}
 

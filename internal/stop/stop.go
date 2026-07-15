@@ -18,6 +18,8 @@ type StopArgs struct {
 	GraceTime  int
 }
 
+// TODO: remove print functions inside HandleStopCommand
+
 func HandleStopCommand(args *StopArgs) error {
 
 	session, err := sessionPkg.FindSessionByRef(args.SessionRef)

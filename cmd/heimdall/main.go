@@ -16,11 +16,10 @@ import (
 	"github.com/SkAndMl/heimdall/internal/stop"
 )
 
-func main() {
-
+func createHomeDirIfNotExists() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	baseDir := filepath.Join(home, config.BASE_DIR)
@@ -28,9 +27,18 @@ func main() {
 	_, err = os.Stat(baseDir)
 	if errors.Is(err, fs.ErrNotExist) {
 		if err := os.MkdirAll(filepath.Join(baseDir, "sessions"), 0755); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 	} else if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func main() {
+
+	if err := createHomeDirIfNotExists(); err != nil {
 		log.Fatalln(err)
 	}
 
@@ -48,6 +56,13 @@ func main() {
 		if err := run.HandleRunCommand(parsedArgs); err != nil {
 			log.Fatalln(err)
 		}
+	case "_run-supervisor":
+		parsedArgs, err := cli.ParseRunArgs(args)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		run.HandleSupervisorCommand(parsedArgs)
+		return
 	case "ps":
 		parsedArgs, err := cli.ParsePsArgs(args)
 		if err != nil {
