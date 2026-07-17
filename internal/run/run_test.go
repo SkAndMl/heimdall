@@ -3,9 +3,12 @@ package run
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/SkAndMl/heimdall/internal/config"
 	sessionPkg "github.com/SkAndMl/heimdall/internal/session"
@@ -57,6 +60,68 @@ func TestHandleRunCommandCapturesLogsAndFinishesSession(t *testing.T) {
 	}
 	if string(stderr) != "stderr-message" {
 		t.Fatalf("stderr.log = %q, want stderr-message", string(stderr))
+	}
+}
+
+func TestStopRunningProcessEscalatesAfterGracePeriod(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	readyPath := filepath.Join(t.TempDir(), "ready")
+	cmd := exec.Command("sh", "-c", `trap '' TERM; printf ready > "$1"; while :; do sleep 1; done`, "sh", readyPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting command: %v", err)
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, err := os.Stat(readyPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			<-waitCh
+			t.Fatal("command did not install SIGTERM handler")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	session, err := sessionPkg.NewSession("stubborn", "", []string{"sh"})
+	if err != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		<-waitCh
+		t.Fatalf("NewSession returned error: %v", err)
+	}
+	session.PID = cmd.Process.Pid
+	session.PGID = cmd.Process.Pid
+	session.Status = sessionPkg.StatusRunning
+	if err := session.Save(); err != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		<-waitCh
+		t.Fatalf("saving session: %v", err)
+	}
+
+	gracePeriod := 50 * time.Millisecond
+	startedAt := time.Now()
+	if err := stopRunningProcess(session, waitCh, gracePeriod); err != nil {
+		t.Fatalf("stopRunningProcess returned error: %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed < gracePeriod {
+		t.Fatalf("stopRunningProcess returned after %v, before grace period %v", elapsed, gracePeriod)
+	}
+
+	saved, err := sessionPkg.FindSessionByRef(session.ID)
+	if err != nil {
+		t.Fatalf("finding session: %v", err)
+	}
+	if saved.Status != sessionPkg.StatusKilled {
+		t.Fatalf("Status = %q, want %q", saved.Status, sessionPkg.StatusKilled)
 	}
 }
 

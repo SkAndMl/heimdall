@@ -31,6 +31,7 @@ type Session struct {
 	Cwd       string    `json:"cwd"`
 	PID       int       `json:"pid"`
 	PGID      int       `json:"pgid"`
+	RunnerPID int       `json:"runner_pid"`
 	Command   []string  `json:"command"`
 	StartedAt time.Time `json:"started_at"`
 	Status    Status    `json:"status"`

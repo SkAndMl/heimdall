@@ -83,32 +83,19 @@ heim_478baf61-0212-424d-a32e-8a5db5c939fa api  running    4843    4m     python 
 ## Stop A Session
 
 ```sh
-heimdall stop <session-ref> [flags]
+heimdall stop <session-ref>
 ```
 
-`stop` sends `SIGTERM` to the session's process group, waits for the grace
-duration, and sends `SIGKILL` if processes remain. Session metadata and log
-files stay in `~/.heimdall/sessions` for later inspection.
-
-Flags:
-
-- `--grace <seconds>`: seconds to wait before escalating to `SIGKILL`
-  (default: `2`)
+`stop` asks the session runner to terminate the managed process group. The
+runner sends `SIGTERM`, waits two seconds, and sends `SIGKILL` if processes
+remain. Session metadata and log files stay in `~/.heimdall/sessions` for later
+inspection.
 
 Examples:
 
 ```sh
 heimdall stop api
-heimdall stop heim_478baf61 --grace 5
-```
-
-Output:
-
-```text
-Stopping heim_478baf61-0212-424d-a32e-8a5db5c939fa (api)...
-Sent SIGTERM to process group 4843.
-All processes exited.
-Session marked stopped.
+heimdall stop heim_478baf61
 ```
 
 ## Inspect A Session

@@ -61,8 +61,9 @@ func main() {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		run.HandleSupervisorCommand(parsedArgs)
-		return
+		if err := run.HandleSupervisorCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		}
 	case "ps":
 		parsedArgs, err := cli.ParsePsArgs(args)
 		if err != nil {

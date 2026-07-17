@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/SkAndMl/heimdall/internal/inspect"
 	"github.com/SkAndMl/heimdall/internal/ps"
@@ -102,31 +101,9 @@ func ParseInspectArgs(args []string) (*inspect.InspectArgs, error) {
 }
 
 func ParseStopArgs(args []string) (*stop.StopArgs, error) {
-
-	stopArgs := &stop.StopArgs{GraceTime: 2}
-
-	if len(args) < 3 || args[1] != "stop" {
+	if len(args) != 3 || args[1] != "stop" {
 		return nil, fmt.Errorf("Invalid command\n")
 	}
 
-	stopArgs.SessionRef = args[2]
-
-	for i := 3; i < len(args); {
-		switch args[i] {
-		case "--grace":
-			if i+1 >= len(args) {
-				return nil, fmt.Errorf("--grace requires a value\n")
-			}
-			graceTime, err := strconv.Atoi(args[i+1])
-			if err != nil {
-				return nil, err
-			}
-			stopArgs.GraceTime = graceTime
-			i += 2
-		default:
-			return nil, fmt.Errorf("Unrecognized argument %s\n", args[i])
-		}
-	}
-
-	return stopArgs, nil
+	return &stop.StopArgs{SessionRef: args[2]}, nil
 }

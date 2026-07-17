@@ -65,3 +65,19 @@ func TestParseInspectArgs(t *testing.T) {
 		t.Fatalf("SessionRef = %q, want heim_abc", args.SessionRef)
 	}
 }
+
+func TestParseStopArgs(t *testing.T) {
+	args, err := ParseStopArgs([]string{"heimdall", "stop", "heim_abc"})
+	if err != nil {
+		t.Fatalf("ParseStopArgs returned error: %v", err)
+	}
+	if args.SessionRef != "heim_abc" {
+		t.Fatalf("SessionRef = %q, want heim_abc", args.SessionRef)
+	}
+}
+
+func TestParseStopArgsRejectsGraceFlag(t *testing.T) {
+	if _, err := ParseStopArgs([]string{"heimdall", "stop", "heim_abc", "--grace", "5"}); err == nil {
+		t.Fatal("ParseStopArgs returned nil error for removed --grace flag")
+	}
+}
