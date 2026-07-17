@@ -69,7 +69,7 @@ func manageRunningProcess(cmd *exec.Cmd, session *sessionPkg.Session) error {
 	// with stop subcommand
 	if err := session.SetStatus(sessionPkg.StatusRunning); err != nil {
 		_ = syscall.Kill(-session.PGID, syscall.SIGTERM)
-		_ = cmd.Wait()
+		<-waitCh
 		return err
 	}
 
