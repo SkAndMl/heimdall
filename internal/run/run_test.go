@@ -18,12 +18,15 @@ func TestHandleRunCommandCapturesLogsAndFinishesSession(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	err := HandleRunCommand(&RunArgs{
+	sessionID, err := HandleRunCommand(&RunArgs{
 		Name:    "smoke",
 		Command: []string{"sh", "-c", "printf stdout-message; printf stderr-message >&2"},
 	})
 	if err != nil {
 		t.Fatalf("HandleRunCommand returned error: %v", err)
+	}
+	if sessionID != "" {
+		t.Fatalf("session ID = %q, want empty for foreground run", sessionID)
 	}
 
 	sessionDir := onlySessionDir(t, homeDir)
@@ -42,8 +45,8 @@ func TestHandleRunCommandCapturesLogsAndFinishesSession(t *testing.T) {
 	if saved.Status != sessionPkg.StatusFinished {
 		t.Fatalf("Status = %q, want %q", saved.Status, sessionPkg.StatusFinished)
 	}
-	if saved.PID == 0 || saved.PGID == 0 {
-		t.Fatalf("PID/PGID not set: pid=%d pgid=%d", saved.PID, saved.PGID)
+	if saved.PID == 0 || saved.PGID == 0 || saved.RunnerPID == 0 {
+		t.Fatalf("PID/PGID/RunnerPID not set: pid=%d pgid=%d runner_pid=%d", saved.PID, saved.PGID, saved.RunnerPID)
 	}
 
 	stdout, err := os.ReadFile(filepath.Join(sessionDir, "stdout.log"))
@@ -60,6 +63,16 @@ func TestHandleRunCommandCapturesLogsAndFinishesSession(t *testing.T) {
 	}
 	if string(stderr) != "stderr-message" {
 		t.Fatalf("stderr.log = %q, want stderr-message", string(stderr))
+	}
+}
+
+func TestHandleRunCommandRejectsEmptyCommand(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	_, err := HandleRunCommand(&RunArgs{Name: "empty"})
+	if err == nil || !strings.Contains(err.Error(), "has no command") {
+		t.Fatalf("HandleRunCommand error = %v, want missing command error", err)
 	}
 }
 

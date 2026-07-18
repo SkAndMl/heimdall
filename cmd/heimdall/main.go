@@ -53,15 +53,16 @@ func main() {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if err := run.HandleRunCommand(parsedArgs); err != nil {
+		if sessionID, err := run.HandleRunCommand(parsedArgs); err != nil {
 			log.Fatalln(err)
+		} else if len(sessionID) > 0 {
+			fmt.Printf("Session ID: %s\n", sessionID)
 		}
 	case "_run-supervisor":
-		parsedArgs, err := cli.ParseRunArgs(args)
-		if err != nil {
-			log.Fatalln(err)
+		if len(args) != 3 {
+			log.Fatalln("invalid command format")
 		}
-		if err := run.HandleSupervisorCommand(parsedArgs); err != nil {
+		if err := run.HandleSupervisorCommand(args[2]); err != nil {
 			log.Fatalln(err)
 		}
 	case "ps":
