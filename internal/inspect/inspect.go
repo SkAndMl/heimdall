@@ -102,6 +102,12 @@ func HandleInspectCommand(args *InspectArgs) error {
 		return fmt.Errorf("session %q not found", args.SessionRef)
 	}
 
+	if session.Status == sessionPkg.StatusRunning && session.PGID > 0 {
+		if alive, err := util.IsProcessGroupAlive(session.PGID); err == nil && !alive {
+			_ = session.SetStatus(sessionPkg.StatusFinished)
+		}
+	}
+
 	childProcesses, err := util.FindProcessesInGroup(session.PGID, true)
 	if err != nil {
 		return err

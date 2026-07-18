@@ -11,6 +11,14 @@ type Process struct {
 	Command string
 }
 
+func IsProcessGroupAlive(pgid int) (bool, error) {
+	processes, err := FindProcessesInGroup(pgid, false)
+	if err != nil {
+		return false, err
+	}
+	return len(processes) > 0, nil
+}
+
 func FindProcessesInGroup(pgid int, excludeGroupHead bool) ([]Process, error) {
 	processes := make([]Process, 0)
 

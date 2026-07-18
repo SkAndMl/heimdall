@@ -13,6 +13,7 @@ import (
 
 	"github.com/SkAndMl/heimdall/internal/config"
 	sessionPkg "github.com/SkAndMl/heimdall/internal/session"
+	"github.com/SkAndMl/heimdall/internal/util"
 )
 
 type PsArgs struct {
@@ -64,7 +65,11 @@ func getSessions(args *PsArgs) ([]sessionPkg.Session, error) {
 			continue
 		}
 
-		_ = session.Reconcile()
+		if session.Status == sessionPkg.StatusRunning && session.PGID > 0 {
+			if alive, err := util.IsProcessGroupAlive(session.PGID); err == nil && !alive {
+				_ = session.SetStatus(sessionPkg.StatusFinished)
+			}
+		}
 
 		if args.Status != "" {
 			if session.Status == args.Status {

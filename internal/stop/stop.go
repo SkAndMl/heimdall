@@ -28,6 +28,12 @@ func HandleStopCommand(args *StopArgs) error {
 		return fmt.Errorf("session %q not found\n", args.SessionRef)
 	}
 
+	if session.Status == sessionPkg.StatusRunning && session.PGID > 0 {
+		if alive, err := util.IsProcessGroupAlive(session.PGID); err == nil && !alive {
+			_ = session.SetStatus(sessionPkg.StatusFinished)
+		}
+	}
+
 	if session.Status != sessionPkg.StatusRunning && session.Status != sessionPkg.StatusStopping {
 		return fmt.Errorf("session %q is currently not running\n", session.ID)
 	}

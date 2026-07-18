@@ -2,9 +2,7 @@ package session
 
 import (
 	"encoding/json"
-	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -137,77 +135,6 @@ func TestOpenLogFilesCreatesWritableLogs(t *testing.T) {
 	}
 	if string(stderr) != "stderr-message" {
 		t.Fatalf("stderr.log = %q, want stderr-message", string(stderr))
-	}
-}
-
-func TestReconcileNoopsForNonRunningSession(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-
-	session, err := NewSession("done", "", []string{"true"})
-	if err != nil {
-		t.Fatalf("NewSession returned error: %v", err)
-	}
-	session.Status = StatusFinished
-	if err := session.Save(); err != nil {
-		t.Fatalf("Save returned error: %v", err)
-	}
-
-	if err := session.Reconcile(); err != nil {
-		t.Fatalf("Reconcile returned error: %v", err)
-	}
-	if session.Status != StatusFinished {
-		t.Fatalf("Status = %q, want %q", session.Status, StatusFinished)
-	}
-}
-
-func TestReconcileKeepsRunningWhenProcessAlive(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-
-	cmd := exec.Command("sleep", "10")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("starting process: %v", err)
-	}
-	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
-
-	session, err := NewSession("live", "", []string{"sleep", "10"})
-	if err != nil {
-		t.Fatalf("NewSession returned error: %v", err)
-	}
-	session.PID = cmd.Process.Pid
-	session.Status = StatusRunning
-	if err := session.Save(); err != nil {
-		t.Fatalf("Save returned error: %v", err)
-	}
-
-	if err := session.Reconcile(); err != nil {
-		t.Fatalf("Reconcile returned error: %v", err)
-	}
-	if session.Status != StatusRunning {
-		t.Fatalf("Status = %q, want %q", session.Status, StatusRunning)
-	}
-}
-
-func TestReconcileMarksDoneForDeadProcess(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-
-	session, err := NewSession("dead", "", []string{"true"})
-	if err != nil {
-		t.Fatalf("NewSession returned error: %v", err)
-	}
-	session.PID = math.MaxInt32
-	session.Status = StatusRunning
-	if err := session.Save(); err != nil {
-		t.Fatalf("Save returned error: %v", err)
-	}
-
-	if err := session.Reconcile(); err != nil {
-		t.Fatalf("Reconcile returned error: %v", err)
-	}
-	if session.Status != StatusFinished {
-		t.Fatalf("Status = %q, want %q", session.Status, StatusFinished)
 	}
 }
 

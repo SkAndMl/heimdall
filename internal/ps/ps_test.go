@@ -2,7 +2,6 @@ package ps
 
 import (
 	"encoding/json"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,7 +118,8 @@ func TestGetSessionsReconcilesStaleRunningSession(t *testing.T) {
 		ID:     "heim_55555555-5555-5555-5555-555555555555",
 		Name:   "stale",
 		Status: sessionPkg.StatusRunning,
-		PID:    math.MaxInt32,
+		PID:    99999999,
+		PGID:   99999999,
 	})
 
 	sessions, err := getSessions(&PsArgs{})
