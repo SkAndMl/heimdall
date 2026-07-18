@@ -11,6 +11,7 @@ import (
 	"github.com/SkAndMl/heimdall/internal/cli"
 	"github.com/SkAndMl/heimdall/internal/config"
 	"github.com/SkAndMl/heimdall/internal/inspect"
+	"github.com/SkAndMl/heimdall/internal/logs"
 	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
 	"github.com/SkAndMl/heimdall/internal/stop"
@@ -87,6 +88,14 @@ func main() {
 			log.Fatalln(err)
 		}
 		if err := stop.HandleStopCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		}
+	case "logs":
+		parsedArgs, err := cli.ParseLogsArgs(args)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if err := logs.HandleLogsCommand(parsedArgs); err != nil {
 			log.Fatalln(err)
 		}
 	default:
