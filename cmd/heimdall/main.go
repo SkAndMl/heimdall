@@ -11,16 +11,16 @@ import (
 	"github.com/SkAndMl/heimdall/internal/cli"
 	"github.com/SkAndMl/heimdall/internal/config"
 	"github.com/SkAndMl/heimdall/internal/inspect"
+	"github.com/SkAndMl/heimdall/internal/logs"
 	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
 	"github.com/SkAndMl/heimdall/internal/stop"
 )
 
-func main() {
-
+func createHomeDirIfNotExists() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	baseDir := filepath.Join(home, config.BASE_DIR)
@@ -28,9 +28,18 @@ func main() {
 	_, err = os.Stat(baseDir)
 	if errors.Is(err, fs.ErrNotExist) {
 		if err := os.MkdirAll(filepath.Join(baseDir, "sessions"), 0755); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 	} else if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func main() {
+
+	if err := createHomeDirIfNotExists(); err != nil {
 		log.Fatalln(err)
 	}
 
@@ -45,7 +54,16 @@ func main() {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if err := run.HandleRunCommand(parsedArgs); err != nil {
+		if sessionID, err := run.HandleRunCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		} else if len(sessionID) > 0 {
+			fmt.Printf("Session ID: %s\n", sessionID)
+		}
+	case "_run-supervisor":
+		if len(args) != 3 {
+			log.Fatalln("invalid command format")
+		}
+		if err := run.HandleSupervisorCommand(args[2]); err != nil {
 			log.Fatalln(err)
 		}
 	case "ps":
@@ -70,6 +88,14 @@ func main() {
 			log.Fatalln(err)
 		}
 		if err := stop.HandleStopCommand(parsedArgs); err != nil {
+			log.Fatalln(err)
+		}
+	case "logs":
+		parsedArgs, err := cli.ParseLogsArgs(args)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if err := logs.HandleLogsCommand(parsedArgs); err != nil {
 			log.Fatalln(err)
 		}
 	default:

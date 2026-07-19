@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/SkAndMl/heimdall/internal/inspect"
+	"github.com/SkAndMl/heimdall/internal/logs"
 	"github.com/SkAndMl/heimdall/internal/ps"
 	"github.com/SkAndMl/heimdall/internal/run"
 	"github.com/SkAndMl/heimdall/internal/session"
@@ -16,7 +17,7 @@ import (
 func ParseRunArgs(args []string) (*run.RunArgs, error) {
 	runArgs := &run.RunArgs{}
 
-	if len(args) < 2 || args[1] != "run" {
+	if len(args) < 2 || (args[1] != "run" && args[1] != "_run-supervisor") {
 		return nil, fmt.Errorf("Subcommand is not run\n")
 	}
 
@@ -102,31 +103,46 @@ func ParseInspectArgs(args []string) (*inspect.InspectArgs, error) {
 }
 
 func ParseStopArgs(args []string) (*stop.StopArgs, error) {
-
-	stopArgs := &stop.StopArgs{GraceTime: 2}
-
-	if len(args) < 3 || args[1] != "stop" {
+	if len(args) != 3 || args[1] != "stop" {
 		return nil, fmt.Errorf("Invalid command\n")
 	}
 
-	stopArgs.SessionRef = args[2]
+	return &stop.StopArgs{SessionRef: args[2]}, nil
+}
+
+func ParseLogsArgs(args []string) (*logs.LogArgs, error) {
+	if len(args) < 3 || args[1] != "logs" {
+		return nil, fmt.Errorf("Invalid command\n")
+	}
+
+	logArgs := &logs.LogArgs{
+		SessionRef: args[2],
+	}
 
 	for i := 3; i < len(args); {
 		switch args[i] {
-		case "--grace":
+		case "--stderr":
+			logArgs.StderrFlag = true
+			i += 1
+		case "--follow":
+			logArgs.FollowFlag = true
+			i += 1
+		case "--tail":
 			if i+1 >= len(args) {
-				return nil, fmt.Errorf("--grace requires a value\n")
+				return nil, fmt.Errorf("--tail option requires an integer value\n")
 			}
-			graceTime, err := strconv.Atoi(args[i+1])
+			lastNLines, err := strconv.Atoi(args[i+1])
 			if err != nil {
 				return nil, err
 			}
-			stopArgs.GraceTime = graceTime
+			if lastNLines <= 0 {
+				return nil, fmt.Errorf("Value for --tail option should be +ve\n")
+			}
+			logArgs.LastNLines = lastNLines
 			i += 2
 		default:
-			return nil, fmt.Errorf("Unrecognized argument %s\n", args[i])
+			return nil, fmt.Errorf("Unrecognized option %q\n", args[i])
 		}
 	}
-
-	return stopArgs, nil
+	return logArgs, nil
 }
