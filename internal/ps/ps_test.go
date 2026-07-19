@@ -110,6 +110,27 @@ func TestFormatPsOutputJSON(t *testing.T) {
 	}
 }
 
+func TestGetSessionsReconcilesStaleRunningSession(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSession(t, homeDir, sessionPkg.Session{
+		ID:     "heim_55555555-5555-5555-5555-555555555555",
+		Name:   "stale",
+		Status: sessionPkg.StatusRunning,
+		PID:    99999999,
+		PGID:   99999999,
+	})
+
+	sessions, err := getSessions(&PsArgs{})
+	if err != nil {
+		t.Fatalf("getSessions returned error: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("len(sessions) = %d, want 0 (stale session should be reconciled away)", len(sessions))
+	}
+}
+
 func writeSession(t *testing.T, homeDir string, session sessionPkg.Session) {
 	t.Helper()
 

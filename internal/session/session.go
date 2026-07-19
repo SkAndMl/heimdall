@@ -87,6 +87,7 @@ func (s *Session) SetStatus(status Status) error {
 	return s.Save()
 }
 
+
 func (s *Session) StdoutPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
