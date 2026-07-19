@@ -66,7 +66,7 @@ func getSessions(args *PsArgs) ([]sessionPkg.Session, error) {
 		}
 
 		if session.Status == sessionPkg.StatusRunning && session.PGID > 0 {
-			if alive, err := util.IsProcessGroupAlive(session.PGID); err == nil && !alive {
+			if alive, err := util.IsProcessGroupAlive(session.PGID, session.StartedAt); err == nil && !alive {
 				_ = session.SetStatus(sessionPkg.StatusFinished)
 			}
 		}

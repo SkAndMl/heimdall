@@ -38,6 +38,7 @@ func TestHandleStopCommandStopsProcessGroupAndPreservesSessionFiles(t *testing.T
 	}
 	session.PID = cmd.Process.Pid
 	session.PGID = pgid
+	session.StartedAt = time.Now()
 	session.Status = sessionPkg.StatusRunning
 	if err := session.Save(); err != nil {
 		t.Fatalf("saving session: %v", err)
